@@ -34,7 +34,7 @@ Il repository deve essere pubblico su GitHub prima di poter essere installato.
 
 1. In HACS apri **Integrations → menu → Custom repositories**.
 2. Aggiungi
-   `https://github.com/giuseppe99barchetta/FastwebPowerControlHas` come
+   `https://github.com/giuseppe99barchetta/fastweb-power-control-ha` come
    repository di tipo **Integration**.
 3. Cerca e installa **Fastweb Power Control**.
 4. Riavvia Home Assistant.

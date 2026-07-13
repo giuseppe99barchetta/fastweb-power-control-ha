@@ -3,10 +3,10 @@
   "name": "Fastweb Power Control",
   "codeowners": ["@giuseppe99barchetta"],
   "config_flow": true,
-  "documentation": "https://github.com/giuseppe99barchetta/FastwebPowerControlHas",
+  "documentation": "https://github.com/giuseppe99barchetta/fastweb-power-control-ha",
   "integration_type": "service",
   "iot_class": "cloud_polling",
-  "issue_tracker": "https://github.com/giuseppe99barchetta/FastwebPowerControlHas/issues",
+  "issue_tracker": "https://github.com/giuseppe99barchetta/fastweb-power-control-ha/issues",
   "single_config_entry": true,
   "version": "0.3.0"
 }
