@@ -1,3 +1,6 @@
 __pycache__/
 *.pyc
 fastweb_power_control.cookie
+fastweb_power_control.credentials
+fastweb_power_control.cookie.tmp
+adguard.cookie

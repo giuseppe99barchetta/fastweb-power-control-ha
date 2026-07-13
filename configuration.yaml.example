@@ -5,7 +5,8 @@ command_line:
       command: >-
         python3 /config/fastweb_power_control.py
         --cookie-file /config/fastweb_power_control.cookie
-      command_timeout: 15
+        --credentials-file /config/fastweb_power_control.credentials
+      command_timeout: 30
       scan_interval: 30
       value_template: "{{ value_json.data.realtime }}"
       json_attributes_path: "$.data"
