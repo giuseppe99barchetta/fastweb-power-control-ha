@@ -1,0 +1,18 @@
+command_line:
+  - sensor:
+      name: Fastweb Power Control
+      unique_id: fastweb_power_control
+      command: >-
+        python3 /config/fastweb_power_control.py
+        --cookie-file /config/fastweb_power_control.cookie
+      command_timeout: 15
+      scan_interval: 30
+      value_template: "{{ value_json.data.realtime }}"
+      json_attributes_path: "$.data"
+      json_attributes:
+        - realtimek
+        - realtime_max
+        - realtime_color
+      unit_of_measurement: W
+      device_class: power
+      state_class: measurement
