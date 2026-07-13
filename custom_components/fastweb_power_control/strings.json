@@ -1,12 +1,22 @@
 {
   "config": {
     "abort": {
+      "reauth_successful": "Authentication updated successfully.",
       "single_instance_allowed": "Only one configuration is allowed."
     },
     "error": {
-      "cannot_connect": "Fastweb login failed. Check the credentials or complete any reCAPTCHA on the website."
+      "cannot_connect": "Cannot connect to Fastweb.",
+      "invalid_auth": "Fastweb login failed. Check the credentials or complete any reCAPTCHA on the website."
     },
     "step": {
+      "reauth_confirm": {
+        "data": {
+          "password": "Password",
+          "username": "Username"
+        },
+        "description": "Enter your MyFastweb credentials again.",
+        "title": "Reconnect Fastweb Power Control"
+      },
       "user": {
         "data": {
           "password": "Password",
@@ -19,9 +29,60 @@
     }
   },
   "entity": {
+    "date": {
+      "holiday_from": {
+        "name": "Holiday start"
+      },
+      "holiday_to": {
+        "name": "Holiday end"
+      }
+    },
+    "number": {
+      "monthly_threshold": {
+        "name": "Monthly energy threshold"
+      }
+    },
     "sensor": {
+      "energy_total": {
+        "name": "Cumulative consumption"
+      },
       "power": {
         "name": "Current consumption"
+      }
+    },
+    "switch": {
+      "buzzer": {
+        "name": "Power limit buzzer"
+      },
+      "holiday_mode": {
+        "name": "Holiday mode warning"
+      },
+      "led_all": {
+        "name": "All LEDs"
+      },
+      "led_internet": {
+        "name": "Internet LED"
+      },
+      "led_meter": {
+        "name": "Meter data LED"
+      },
+      "monthly_budget": {
+        "name": "Monthly budget warning"
+      },
+      "power_limit": {
+        "name": "Contracted power warning"
+      },
+      "provider_disconnection": {
+        "name": "Provider disconnection warning"
+      }
+    }
+  },
+  "options": {
+    "step": {
+      "init": {
+        "data": {
+          "scan_interval": "Update interval (seconds)"
+        }
       }
     }
   },

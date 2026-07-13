@@ -6,65 +6,73 @@
 
 [English](README.md)
 
-Custom integration non ufficiale per leggere il consumo istantaneo di Fastweb
-Power Control in Home Assistant. Usa l'endpoint MyFastweb già utilizzato dalla
-dashboard Fastweb; non richiede MQTT, pacchetti Python esterni o cookie copiati
-manualmente.
+Integrazione custom non ufficiale per leggere e configurare Fastweb Power
+Control da Home Assistant. Usa gli stessi endpoint privati del portale
+MyFastweb: non richiede MQTT, dipendenze Python esterne o cookie copiati a
+mano.
 
-> Questo progetto non è affiliato né supportato da Fastweb. L'API usata non è
-> pubblica e potrebbe cambiare.
+> Il progetto non è affiliato né supportato da Fastweb. L’API non è pubblica e
+> può cambiare senza preavviso.
+
+## Entità disponibili
+
+- un sensore di potenza istantanea in W;
+- un sensore di consumo cumulativo in kWh compatibile con la dashboard Energia;
+- interruttori per LED generale, LED misuratore, LED Internet e buzzer;
+- interruttori per avviso superamento potenza, distacco fornitore, budget
+  mensile e modalità vacanza;
+- un numero per la soglia mensile in kWh;
+- due date per inizio e fine modalità vacanza.
+
+Le impostazioni sono rilette periodicamente e aggiornate subito dopo ogni
+comando. Prima di attivare la modalità vacanza, imposta entrambe le date. La
+disattivazione contrattuale del servizio non viene esposta in Home Assistant.
 
 ## Installazione con HACS
 
 Il repository deve essere pubblico su GitHub prima di poter essere installato.
 
-1. In HACS apri **Integrations** → menu → **Custom repositories**.
+1. In HACS apri **Integrations → menu → Custom repositories**.
 2. Aggiungi
    `https://github.com/giuseppe99barchetta/FastwebPowerControlHas` come
-   **Integration**.
-3. Cerca **Fastweb Power Control** e installala.
+   repository di tipo **Integration**.
+3. Cerca e installa **Fastweb Power Control**.
 4. Riavvia Home Assistant.
 5. Apri **Impostazioni → Dispositivi e servizi → Aggiungi integrazione** e
    seleziona **Fastweb Power Control**.
-6. Inserisci username, password MyFastweb e l'intervallo di aggiornamento.
+6. Inserisci username, password MyFastweb e intervallo di aggiornamento.
 
-L'integrazione crea un sensore di potenza espresso in watt, con
-`device_class: power` e `state_class: measurement`. L'ID dell'entità dipende
-dalla lingua usata al momento della creazione e può essere modificato in Home
-Assistant.
-
-Home Assistant 2026.3 o successivo è richiesto perché le immagini Fastweb sono
-incluse localmente nella custom integration.
+L’intervallo può essere cambiato successivamente tramite **Configura**.
+Home Assistant 2026.3 o successivo è richiesto.
 
 ## Autenticazione e rinnovo cookie
 
-La configurazione UI verifica subito le credenziali. In seguito l'integrazione:
+Il flusso di configurazione verifica subito le credenziali. L’integrazione:
 
-1. mantiene la sessione Fastweb in memoria;
+1. mantiene una sessione Fastweb in memoria;
 2. applica automaticamente ogni `Set-Cookie` ricevuto;
-3. usa il cookie persistente `FWB_RM` per rigenerare la sessione PHP;
-4. dopo un riavvio effettua nuovamente il login con le credenziali salvate da
-   Home Assistant.
+3. riutilizza il cookie persistente `FWB_RM` per rinnovare la sessione;
+4. effettua nuovamente il login quando la sessione scade o Home Assistant si
+   riavvia;
+5. avvia il flusso di riautenticazione se le credenziali non sono più valide.
 
-Non è necessario creare o aggiornare un file cookie. Se Fastweb richiede un
-reCAPTCHA, accedi una volta dal sito e riprova: il progetto non tenta di
-aggirarlo.
+Non serve alcun file cookie. Se Fastweb richiede un reCAPTCHA, accedi una volta
+dal sito e riprova: il progetto non tenta di aggirarlo.
 
 ## Energia in kWh
 
-Il sensore misura potenza istantanea in W. Per ottenere energia in kWh crea un
-helper **Integrale** in Home Assistant usando il sensore come sorgente e `k`
-come prefisso metrico.
+Il consumo cumulativo viene calcolato dai campioni di potenza, conservato ai
+riavvii e può essere selezionato direttamente come consumo di rete nella
+dashboard **Energia**. I periodi in cui Fastweb o Home Assistant non forniscono
+campioni non vengono stimati.
 
 ## Installazione manuale
 
 Copia `custom_components/fastweb_power_control` nella directory
 `/config/custom_components/` di Home Assistant, riavvia e aggiungi
-l'integrazione dalla UI.
+l’integrazione dalla UI.
 
-## Client da riga di comando
-
-Il vecchio client resta disponibile per diagnosi:
+## Client diagnostico
 
 ```powershell
 python .\fastweb_power_control.py --self-test
@@ -80,41 +88,22 @@ Il file credenziali, escluso da Git, contiene:
 
 ## MQTT e accesso diretto alla Plug
 
-La Plug all'indirizzo locale analizzato non espone porte TCP comuni. Dal DNS
-del dispositivo risultano:
+La Plug analizzata non espone porte TCP locali comuni. Le richieste DNS
+indicano, tra gli altri, il broker
+`mqtt.prod.smart-power-control.digiwatt.energy`. Il broker accetta TLS sulle
+porte 8883 e 443, ma rifiuta connessioni anonime o con credenziali arbitrarie:
+servono identità, token o certificati provisionati e topic autorizzati.
 
-- `mqtt.prod.smart-power-control.digiwatt.energy`
-- `sps-prd.fastweb.sghiot.com`
-- `sps-prd.oauth.sghiot.com`
-- `sps-prd.iot.sghiot.com`
-
-Il broker MQTT risponde in TLS sulle porte 8883 e 443. Una connessione anonima
-o con credenziali arbitrarie viene chiusa prima del `CONNACK`; servono quindi
-client ID, certificato/chiave o token provisionati e topic autorizzati. Una
-cattura passiva dal router mostra destinazioni e frequenza, ma TLS 1.3 non
-permette di leggere payload o credenziali.
-
-Parametri già noti per MQTT Explorer:
-
-```text
-Host: mqtt.prod.smart-power-control.digiwatt.energy
-Porta: 8883
-TLS e verifica certificato: attivi
-SNI: mqtt.prod.smart-power-control.digiwatt.energy
-Protocollo: MQTT 3.1.1
-```
-
-La prossima indagine utile è il provisioning dell'app Android MyFastweb durante
-una nuova associazione della Plug. Il traffico del router, da solo, non basta a
-recuperare il materiale crittografico.
+Il traffico catturato dal router mostra destinazioni e frequenza, ma TLS 1.3
+protegge payload e credenziali. Per questo l’API MyFastweb è attualmente la via
+più pratica e manutenibile; l’alternativa di ricerca è analizzare il
+provisioning dell’app Android durante una nuova associazione della Plug.
 
 ## Sviluppo
 
 ```powershell
 python .\fastweb_power_control.py --self-test
-python -m py_compile .\fastweb_power_control.py `
-  .\custom_components\fastweb_power_control\api.py
+python -m ruff check .
 ```
 
-Il workflow GitHub esegue sia HACS Action sia hassfest a ogni push e pull
-request.
+Il workflow GitHub esegue HACS Action e hassfest a ogni push e pull request.

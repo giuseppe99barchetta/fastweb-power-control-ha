@@ -1,12 +1,22 @@
 {
   "config": {
     "abort": {
+      "reauth_successful": "Autenticazione aggiornata correttamente.",
       "single_instance_allowed": "È consentita una sola configurazione."
     },
     "error": {
-      "cannot_connect": "Accesso Fastweb fallito. Controlla le credenziali o completa l'eventuale reCAPTCHA sul sito."
+      "cannot_connect": "Impossibile collegarsi a Fastweb.",
+      "invalid_auth": "Accesso Fastweb fallito. Controlla le credenziali o completa l'eventuale reCAPTCHA sul sito."
     },
     "step": {
+      "reauth_confirm": {
+        "data": {
+          "password": "Password",
+          "username": "Username"
+        },
+        "description": "Inserisci nuovamente le credenziali MyFastweb.",
+        "title": "Ricollega Fastweb Power Control"
+      },
       "user": {
         "data": {
           "password": "Password",
@@ -19,9 +29,60 @@
     }
   },
   "entity": {
+    "date": {
+      "holiday_from": {
+        "name": "Inizio vacanza"
+      },
+      "holiday_to": {
+        "name": "Fine vacanza"
+      }
+    },
+    "number": {
+      "monthly_threshold": {
+        "name": "Soglia energia mensile"
+      }
+    },
     "sensor": {
+      "energy_total": {
+        "name": "Consumo cumulativo"
+      },
       "power": {
         "name": "Consumo istantaneo"
+      }
+    },
+    "switch": {
+      "buzzer": {
+        "name": "Buzzer limite potenza"
+      },
+      "holiday_mode": {
+        "name": "Avviso modalità vacanza"
+      },
+      "led_all": {
+        "name": "Tutti i LED"
+      },
+      "led_internet": {
+        "name": "LED connessione Internet"
+      },
+      "led_meter": {
+        "name": "LED dati contatore"
+      },
+      "monthly_budget": {
+        "name": "Avviso budget mensile"
+      },
+      "power_limit": {
+        "name": "Avviso superamento potenza"
+      },
+      "provider_disconnection": {
+        "name": "Avviso distacco fornitura"
+      }
+    }
+  },
+  "options": {
+    "step": {
+      "init": {
+        "data": {
+          "scan_interval": "Intervallo di aggiornamento (secondi)"
+        }
       }
     }
   },
