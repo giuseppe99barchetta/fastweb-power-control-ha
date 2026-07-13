@@ -1,0 +1,29 @@
+{
+  "config": {
+    "abort": {
+      "single_instance_allowed": "Only one configuration is allowed."
+    },
+    "error": {
+      "cannot_connect": "Fastweb login failed. Check the credentials or complete any reCAPTCHA on the website."
+    },
+    "step": {
+      "user": {
+        "data": {
+          "password": "Password",
+          "scan_interval": "Update interval (seconds)",
+          "username": "Username"
+        },
+        "description": "Sign in to MyFastweb. The session and cookies are renewed automatically.",
+        "title": "Fastweb Power Control"
+      }
+    }
+  },
+  "entity": {
+    "sensor": {
+      "power": {
+        "name": "Current consumption"
+      }
+    }
+  },
+  "title": "Fastweb Power Control"
+}

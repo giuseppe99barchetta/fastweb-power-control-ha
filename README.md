@@ -1,138 +1,118 @@
-# Fastweb Power Control per Home Assistant
+<p align="center">
+  <img src="custom_components/fastweb_power_control/brand/logo.png" alt="Fastweb" width="226">
+</p>
 
-Prova minima: usa la sessione MyFastweb esistente, ricava automaticamente il
-`securityToken` dalla dashboard e legge `consumptionRealtime` con il multipart
-usato dal sito. Non richiede pacchetti Python esterni.
+# Fastweb Power Control for Home Assistant
 
-## Prova locale
+[Italiano](README.it.md)
 
-1. Esporta da DevTools **solo il valore** dell'header `Cookie` di una richiesta
-   funzionante e salvalo, su una sola riga, in `fastweb_power_control.cookie`.
-   Usa **Copy value** oppure **Copy as cURL**: il testo mostrato a video può
-   essere abbreviato con `…`. Non incollarlo in chat e non aggiungerlo al
-   repository.
-2. Esegui:
+An unofficial custom integration that reads real-time Fastweb Power Control
+consumption in Home Assistant. It uses the same private MyFastweb endpoint as
+the Fastweb dashboard, with no MQTT, external Python packages, or manually
+copied cookies.
 
-   ```powershell
-   python .\fastweb_power_control.py --self-test
-   python .\fastweb_power_control.py --cookie-file .\fastweb_power_control.cookie
-   ```
+> This project is not affiliated with or supported by Fastweb. The API is not
+> public and may change without notice.
 
-Una risposta valida contiene `data.realtime` in watt.
+## Install with HACS
 
-### Rinnovo automatico della sessione
+The repository must be public on GitHub before HACS can install it.
 
-Il cookie esportato serve soltanto per l'avvio iniziale. A ogni esecuzione lo
-script:
+1. In HACS, open **Integrations** → menu → **Custom repositories**.
+2. Add
+   `https://github.com/giuseppe99barchetta/FastwebPowerControlHas` as an
+   **Integration** repository.
+3. Find and install **Fastweb Power Control**.
+4. Restart Home Assistant.
+5. Open **Settings → Devices & services → Add integration** and select
+   **Fastweb Power Control**.
+6. Enter your MyFastweb username, password, and preferred update interval.
 
-1. carica i cookie in una sessione HTTP;
-2. applica tutti i `Set-Cookie` restituiti da Fastweb;
-3. riscrive atomicamente il file con i soli cookie necessari.
+The integration creates a power sensor in watts with `device_class: power` and
+`state_class: measurement`. Its entity ID depends on the language used when the
+entity is created and can be changed in Home Assistant.
 
-È stato verificato che il solo `FWB_RM` (il cookie **Ricordami**) rigenera
-automaticamente `PHPSESSID` e gli altri cookie di sessione. Non è quindi
-necessario copiarli di nuovo quando scade la sessione PHP.
+Home Assistant 2026.3 or later is required because the Fastweb branding is
+bundled with the custom integration.
 
-Quando scade anche `FWB_RM`, lo script può tentare il login completo. Crea un
-file `fastweb_power_control.credentials` protetto e non versionato:
+## Authentication and cookie renewal
 
-```json
-{"username":"LA_TUA_USERNAME","password":"LA_TUA_PASSWORD"}
+The setup flow verifies the credentials immediately. The integration then:
+
+1. keeps the Fastweb session in memory;
+2. applies every received `Set-Cookie` header automatically;
+3. uses the persistent `FWB_RM` cookie to renew the PHP session;
+4. signs in again after a restart using the credentials stored by Home
+   Assistant.
+
+No cookie file is needed. If Fastweb requests a reCAPTCHA, sign in once on the
+website and try again. This project does not attempt to bypass reCAPTCHA.
+
+## Energy in kWh
+
+The sensor reports instantaneous power in W. To obtain energy in kWh, create an
+**Integral** helper in Home Assistant, select the sensor as its input, and use
+`k` as the metric prefix.
+
+## Manual installation
+
+Copy `custom_components/fastweb_power_control` to Home Assistant's
+`/config/custom_components/` directory, restart Home Assistant, and add the
+integration from the UI.
+
+## Command-line client
+
+The legacy client remains available for diagnostics:
+
+```powershell
+python .\fastweb_power_control.py --self-test
+python .\fastweb_power_control.py `
+  --credentials-file .\fastweb_power_control.credentials
 ```
 
-Poi aggiungi `--credentials-file /percorso/del/file` al comando. Il login usa
-lo stesso endpoint AJAX del sito e abilita nuovamente **Ricordami**. Se Fastweb
-risponde con `needRecaptcha`, l'automazione si ferma: il reCAPTCHA non può e non
-deve essere aggirato. Mantenendo attivo e aggiornato `FWB_RM`, questo fallback
-dovrebbe essere raro.
+The credentials file is excluded from Git and contains:
 
-## Home Assistant
+```json
+{"username":"YOUR_USERNAME","password":"YOUR_PASSWORD"}
+```
 
-1. Copia `fastweb_power_control.py`, `fastweb_power_control.cookie` e, se vuoi
-   il login completo, `fastweb_power_control.credentials` in `/config/`.
-2. Proteggi i file (`chmod 600 /config/fastweb_power_control.*` se hai accesso
-   al terminale).
-3. Copia il contenuto di `configuration.yaml.example` nel tuo
-   `configuration.yaml`, verifica la configurazione e riavvia Home Assistant.
+## MQTT and direct Plug access
 
-Il polling è impostato a 30 secondi. Il sito interroga il realtime ogni 10
-secondi, ma questa prova esegue una GET della dashboard e una POST a ogni ciclo:
-abbassa l'intervallo solo dopo aver verificato stabilità e durata della sessione.
-
-Per ottenere i kWh dal sensore in W, crea in Home Assistant un helper
-**Integrale** usando `sensor.fastweb_power_control` come sorgente e il prefisso
-metrico `k`.
-
-## Accesso diretto alla Plug
-
-La Power Control Plug riceve i dati del contatore 2G tramite Chain 2/PLC e usa
-il Wi-Fi 2,4 GHz per la connettività remota. La variante domestica Plug non
-documenta API locali; Sinapsi pubblicizza Modbus locale per la variante DIN.
-
-Vale comunque un test breve e mirato:
-
-1. ricavare IP e MAC della Plug dal router;
-2. controllare solo quell'host per porte HTTP, MQTT, CoAP, mDNS o SSDP;
-3. catturare solo il traffico di quell'IP per vedere DNS, destinazioni e TLS.
-
-Se espone un protocollo locale, si abbandona il cloud. Se apre solo connessioni
-TLS verso Internet, intercettare i payload richiederebbe MITM o reverse
-engineering del firmware e non conviene rispetto all'endpoint MyFastweb.
-
-### Verifica sulla rete locale
-
-La Plug non espone porte TCP comuni. Dal Query Log DNS del solo dispositivo
-risultano questi servizi:
+The Plug tested on the local network exposes no common TCP ports. Its DNS
+requests include:
 
 - `mqtt.prod.smart-power-control.digiwatt.energy`
 - `sps-prd.fastweb.sghiot.com`
 - `sps-prd.oauth.sghiot.com`
 - `sps-prd.iot.sghiot.com`
-- `connectivitycheck.gstatic.com`
-- `pool.ntp.org`
 
-Il broker MQTT risponde sulle porte 443 e 8883 usando TLS 1.3 e un certificato
-Amazon. Il traffico locale è quindi un collegamento cloud cifrato: senza le
-credenziali MQTT provisionate nel dispositivo, sniffarlo non espone i dati di
-consumo. L'endpoint MyFastweb resta il percorso più piccolo e stabile da usare.
+The MQTT broker accepts TLS connections on ports 8883 and 443. It closes
+anonymous connections and connections with arbitrary credentials before
+`CONNACK`, so a provisioned client ID, certificate and key or token, and
+authorized topics are required. Passive router captures reveal destinations
+and timing, but TLS 1.3 protects payloads and credentials.
 
-### Prova con MQTT Explorer
+Known MQTT Explorer settings:
 
-Parametri confermati:
+```text
+Host: mqtt.prod.smart-power-control.digiwatt.energy
+Port: 8883
+TLS and certificate verification: enabled
+SNI: mqtt.prod.smart-power-control.digiwatt.energy
+Protocol: MQTT 3.1.1
+```
 
-- host: `mqtt.prod.smart-power-control.digiwatt.energy`
-- porta MQTT TLS: `8883`
-- TLS/SNI: abilitati
-- certificato server: valido, emesso da Amazon
+The next useful research path is the MyFastweb Android app provisioning flow
+during a new Plug pairing. Router traffic alone cannot recover the required
+cryptographic material.
 
-Un `CONNECT` anonimo e un `CONNECT` con username/password fittizi vengono
-entrambi chiusi dal broker prima del `CONNACK`. MQTT Explorer supporta
-certificato client, chiave privata e SNI, ma per collegarsi servono ancora:
+## Development
 
-- client ID corretto;
-- certificato client e relativa chiave privata, oppure il token previsto dal
-  broker;
-- topic consentiti dalla policy del dispositivo.
+```powershell
+python .\fastweb_power_control.py --self-test
+python -m py_compile .\fastweb_power_control.py `
+  .\custom_components\fastweb_power_control\api.py
+```
 
-MQTT Explorer non può scoprire questi valori dal solo hostname. Le vie per
-ottenerli, in ordine di utilità, sono:
-
-1. analizzare il provisioning Bluetooth e HTTPS durante una nuova associazione;
-2. analizzare l'app MyFastweb e le sue chiamate OAuth/IoT;
-3. estrarre firmware o flash della Plug tramite UART/programmatore;
-4. catturare il traffico sul Flint per confermare IP, porta e frequenza.
-
-La quarta via non recupera credenziali o payload: TLS 1.3 impedisce la
-decodifica passiva. Le prime tre richiedono una nuova fase di ricerca e, per il
-provisioning o l'hardware, possono interrompere temporaneamente il servizio.
-
-## Confronto delle vie
-
-| Via | Stato | Limite principale |
-|---|---|---|
-| AJAX MyFastweb | Funzionante | Dipende dalla sessione Fastweb |
-| AJAX + rinnovo cookie | Implementato | reCAPTCHA quando scade anche `FWB_RM` |
-| API OAuth/IoT Sinapsi | Da reverse engineerizzare | Flusso e credenziali non documentati |
-| MQTT cloud | Broker trovato | Mancano identità, certificato/chiave e topic |
-| API locale Plug | Non rilevata | Nessuna porta locale esposta |
-| Chain 2/PLC diretto | Hardware avanzato | Protocollo e chiavi provisionate |
+The GitHub workflow runs both HACS Action and hassfest on every push and pull
+request.

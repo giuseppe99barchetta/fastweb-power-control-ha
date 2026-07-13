@@ -1,6 +1,10 @@
 __pycache__/
-*.pyc
-fastweb_power_control.cookie
-fastweb_power_control.credentials
-fastweb_power_control.cookie.tmp
-adguard.cookie
+*.py[cod]
+.ruff_cache/
+.venv/
+.env
+.env.*
+!.env.example
+*.cookie
+*.credentials
+*.cookie.tmp
