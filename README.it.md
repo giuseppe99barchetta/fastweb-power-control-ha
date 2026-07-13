@@ -22,8 +22,8 @@ mano.
 - **Avvisi:** consumo vicino al limite configurabile;
 - **Configurazione:** LED, buzzer, notifiche Fastweb, soglia mensile e date
   della modalità vacanza;
-- **Diagnostica:** connessione Plug, dati non aggiornati, tempo di risposta API,
-  ultimo aggiornamento e notifiche non lette.
+- **Diagnostica:** connessione Plug, dati non aggiornati, tempo di risposta API
+  e notifiche non lette.
 
 Le impostazioni sono rilette periodicamente e aggiornate subito dopo ogni
 comando. Prima di attivare la modalità vacanza, imposta entrambe le date. La

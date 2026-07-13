@@ -56,12 +56,6 @@ SENSORS = (
         state_class=SensorStateClass.MEASUREMENT,
         entity_category=EntityCategory.DIAGNOSTIC,
     ),
-    SensorEntityDescription(
-        key="last_update",
-        translation_key="last_update",
-        device_class=SensorDeviceClass.TIMESTAMP,
-        entity_category=EntityCategory.DIAGNOSTIC,
-    ),
 )
 
 

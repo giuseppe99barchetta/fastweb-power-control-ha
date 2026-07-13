@@ -42,7 +42,6 @@
       "api_latency": {"name": "API response time"},
       "contracted_power": {"name": "Contracted power"},
       "energy_total": {"name": "Cumulative consumption"},
-      "last_update": {"name": "Last successful update"},
       "load_percentage": {"name": "Contracted power usage"},
       "notifications_unread": {"name": "Unread notifications"},
       "power": {"name": "Current consumption"},

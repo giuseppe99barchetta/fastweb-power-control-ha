@@ -42,7 +42,6 @@
       "api_latency": {"name": "Tempo di risposta API"},
       "contracted_power": {"name": "Potenza contrattuale"},
       "energy_total": {"name": "Consumo cumulativo"},
-      "last_update": {"name": "Ultimo aggiornamento riuscito"},
       "load_percentage": {"name": "Utilizzo potenza contrattuale"},
       "notifications_unread": {"name": "Notifiche non lette"},
       "power": {"name": "Consumo istantaneo"},

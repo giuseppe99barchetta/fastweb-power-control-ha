@@ -21,8 +21,8 @@ copied cookies.
 - **Alerts:** a configurable near-power-limit warning;
 - **Configuration:** LEDs, buzzer, Fastweb notifications, monthly threshold,
   and holiday-mode dates;
-- **Diagnostics:** Plug connectivity, stale data, API response time, last
-  update, and unread notifications.
+- **Diagnostics:** Plug connectivity, stale data, API response time, and unread
+  notifications.
 
 Settings are refreshed periodically and immediately after every command. Set
 both holiday dates before enabling holiday mode. Contractual service
