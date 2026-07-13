@@ -12,7 +12,6 @@ from http.cookiejar import Cookie, CookieJar
 from urllib.error import HTTPError, URLError
 from urllib.parse import urlencode, urljoin
 from urllib.request import HTTPCookieProcessor, Request, build_opener
-from zoneinfo import ZoneInfo
 
 DASHBOARD_URL = "https://fastweb.it/myfastweb/abbonamento/consumi-power-control/"
 AJAX_URL = DASHBOARD_URL + "ajax/"
@@ -49,7 +48,6 @@ NOTIFY_BOOL_FIELDS = {
     "monthly_budget": "monthly_energy_budget",
     "holiday_mode": "holiday_mode",
 }
-ROME = ZoneInfo("Europe/Rome")
 
 
 class FastwebError(RuntimeError):
@@ -152,36 +150,6 @@ def _iso_date(value: str) -> str | None:
         return datetime.strptime(value, "%d/%m/%Y").date().isoformat()
     except ValueError as error:
         raise FastwebError("invalid holiday date returned by Fastweb") from error
-
-
-def _parse_green(data: dict) -> dict:
-    current = data.get("current") or {}
-    percentage = current.get("percentage")
-    if not isinstance(percentage, (int, float)):
-        raise FastwebError("invalid Fastweb green energy response")
-
-    result = {"green_percentage": percentage}
-    today = datetime.now(ROME).date()
-    for window in (data.get("windows") or {}).values():
-        try:
-            day = datetime.strptime(window["date"], "%d/%m/%Y").date()
-            start = datetime.strptime(
-                f"{window['date']} {window['start']}", "%d/%m/%Y %H:%M"
-            ).replace(tzinfo=ROME)
-            end = datetime.strptime(
-                f"{window['date']} {window['end']}", "%d/%m/%Y %H:%M"
-            ).replace(tzinfo=ROME)
-        except (KeyError, TypeError, ValueError) as error:
-            raise FastwebError("invalid Fastweb green window response") from error
-        if day == today:
-            prefix = "green_today"
-        elif day == today + date.resolution:
-            prefix = "green_tomorrow"
-        else:
-            continue
-        result[f"{prefix}_start"] = start.isoformat()
-        result[f"{prefix}_end"] = end.isoformat()
-    return result
 
 
 def _parse_latest(data: dict) -> list[dict]:
@@ -413,12 +381,6 @@ class FastwebClient:
                 "notifications_unread": max(0, unread),
             }
 
-    def get_green(self, timeout: float = 15) -> dict:
-        """Return today's renewable-energy percentage and best-use windows."""
-        with self._lock:
-            payload = self._dashboard_action("consumptionGreen", timeout=timeout)
-            return _parse_green(payload.get("data") or {})
-
     def get_latest(self, timeout: float = 15) -> list[dict]:
         """Return recent power samples used to backfill cumulative energy."""
         with self._lock:
@@ -530,27 +492,6 @@ def self_check() -> None:
     assert parse_cookie_header("a=1; b=2") == {"a": "1", "b": "2"}
     assert _portal_date("2026-07-13") == "13/07/2026"
     assert _iso_date("13/07/2026") == "2026-07-13"
-    today = datetime.now(ROME).date()
-    tomorrow = today + date.resolution
-    green = _parse_green(
-        {
-            "current": {"percentage": 42},
-            "windows": {
-                "today": {
-                    "date": today.strftime("%d/%m/%Y"),
-                    "start": "10:00",
-                    "end": "12:00",
-                },
-                "tomorrow": {
-                    "date": tomorrow.strftime("%d/%m/%Y"),
-                    "start": "11:00",
-                    "end": "13:00",
-                },
-            },
-        }
-    )
-    assert green["green_percentage"] == 42
-    assert "green_today_start" in green and "green_tomorrow_end" in green
     latest = _parse_latest(
         {
             "latest": {

@@ -28,7 +28,6 @@
   "entity": {
     "binary_sensor": {
       "connectivity": {"name": "Plug connectivity"},
-      "green_active": {"name": "Green energy window"},
       "power_limit_warning": {"name": "Near power limit"},
       "stale_data": {"name": "Stale consumption data"}
     },
@@ -43,11 +42,6 @@
       "api_latency": {"name": "API response time"},
       "contracted_power": {"name": "Contracted power"},
       "energy_total": {"name": "Cumulative consumption"},
-      "green_percentage": {"name": "Green energy"},
-      "green_today_end": {"name": "Green window end today"},
-      "green_today_start": {"name": "Green window start today"},
-      "green_tomorrow_end": {"name": "Green window end tomorrow"},
-      "green_tomorrow_start": {"name": "Green window start tomorrow"},
       "last_update": {"name": "Last successful update"},
       "load_percentage": {"name": "Contracted power usage"},
       "notifications_unread": {"name": "Unread notifications"},

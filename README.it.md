@@ -17,9 +17,9 @@ mano.
 ## Entità disponibili
 
 - **Sensori e controlli:** potenza istantanea, consumo cumulativo per la
-  dashboard Energia, potenza contrattuale, percentuale utilizzata, potenza
-  disponibile, percentuale e finestre di energia verde;
-- **Avvisi:** finestra verde attiva e consumo vicino al limite configurabile;
+  dashboard Energia, potenza contrattuale, percentuale utilizzata e potenza
+  disponibile;
+- **Avvisi:** consumo vicino al limite configurabile;
 - **Configurazione:** LED, buzzer, notifiche Fastweb, soglia mensile e date
   della modalità vacanza;
 - **Diagnostica:** connessione Plug, dati non aggiornati, tempo di risposta API,

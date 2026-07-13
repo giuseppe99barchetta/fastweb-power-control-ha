@@ -17,9 +17,8 @@ copied cookies.
 ## Available entities
 
 - **Sensors and controls:** realtime power, cumulative Energy-dashboard
-  consumption, contracted power, percentage used, available power, and green
-  energy percentage/windows;
-- **Alerts:** active green window and a configurable near-power-limit warning;
+  consumption, contracted power, percentage used, and available power;
+- **Alerts:** a configurable near-power-limit warning;
 - **Configuration:** LEDs, buzzer, Fastweb notifications, monthly threshold,
   and holiday-mode dates;
 - **Diagnostics:** Plug connectivity, stale data, API response time, last

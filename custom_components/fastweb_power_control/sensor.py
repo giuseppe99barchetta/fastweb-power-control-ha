@@ -44,33 +44,6 @@ SENSORS = (
         state_class=SensorStateClass.MEASUREMENT,
     ),
     SensorEntityDescription(
-        key="green_percentage",
-        translation_key="green_percentage",
-        native_unit_of_measurement=PERCENTAGE,
-        state_class=SensorStateClass.MEASUREMENT,
-        suggested_display_precision=1,
-    ),
-    SensorEntityDescription(
-        key="green_today_start",
-        translation_key="green_today_start",
-        device_class=SensorDeviceClass.TIMESTAMP,
-    ),
-    SensorEntityDescription(
-        key="green_today_end",
-        translation_key="green_today_end",
-        device_class=SensorDeviceClass.TIMESTAMP,
-    ),
-    SensorEntityDescription(
-        key="green_tomorrow_start",
-        translation_key="green_tomorrow_start",
-        device_class=SensorDeviceClass.TIMESTAMP,
-    ),
-    SensorEntityDescription(
-        key="green_tomorrow_end",
-        translation_key="green_tomorrow_end",
-        device_class=SensorDeviceClass.TIMESTAMP,
-    ),
-    SensorEntityDescription(
         key="notifications_unread",
         translation_key="notifications_unread",
         entity_category=EntityCategory.DIAGNOSTIC,

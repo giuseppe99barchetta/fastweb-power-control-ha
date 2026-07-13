@@ -29,7 +29,6 @@ async def async_setup_entry(
             FastwebConnectivitySensor(coordinator, entry),
             FastwebStaleSensor(coordinator, entry),
             FastwebPowerWarningSensor(coordinator, entry),
-            FastwebGreenActiveSensor(coordinator, entry),
         ]
     )
 
@@ -98,20 +97,3 @@ class FastwebPowerWarningSensor(FastwebEntity, BinarySensorEntity):
             CONF_WARNING_THRESHOLD, DEFAULT_WARNING_THRESHOLD
         )
         return self.coordinator.data["load_percentage"] >= threshold
-
-
-class FastwebGreenActiveSensor(FastwebEntity, BinarySensorEntity):
-    """Whether the current time is in Fastweb's green-energy window."""
-
-    _attr_translation_key = "green_active"
-
-    def __init__(self, coordinator, entry: ConfigEntry) -> None:
-        super().__init__(coordinator, entry, "green_active")
-
-    @property
-    def available(self) -> bool:
-        return super().available and "green_active" in self.coordinator.data
-
-    @property
-    def is_on(self) -> bool | None:
-        return self.coordinator.data.get("green_active")

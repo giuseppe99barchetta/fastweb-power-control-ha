@@ -25,7 +25,6 @@ PLATFORMS = (
 )
 SETTINGS_REFRESH_SECONDS = 600
 STATUS_REFRESH_SECONDS = 60
-GREEN_REFRESH_SECONDS = 900
 LATEST_REFRESH_SECONDS = 300
 LOGGER = logging.getLogger(__name__)
 
@@ -52,10 +51,8 @@ class FastwebCoordinator(DataUpdateCoordinator[dict]):
         self.settings: dict = {}
         self.latest_samples: list[dict] = []
         self._status: dict = {}
-        self._green: dict = {}
         self._last_settings_update = 0.0
         self._last_status_update = 0.0
-        self._last_green_update = 0.0
         self._last_latest_update = 0.0
 
     async def _async_optional(self, label: str, method):
@@ -87,12 +84,6 @@ class FastwebCoordinator(DataUpdateCoordinator[dict]):
                 if status := await self._async_optional("status", self.client.get_status):
                     self._status = status
                     self._last_status_update = now
-            if not self._green or now - self._last_green_update >= GREEN_REFRESH_SECONDS:
-                if green := await self._async_optional(
-                    "green energy data", self.client.get_green
-                ):
-                    self._green = green
-                    self._last_green_update = now
             if (
                 not self.latest_samples
                 or now - self._last_latest_update >= LATEST_REFRESH_SECONDS
@@ -110,7 +101,6 @@ class FastwebCoordinator(DataUpdateCoordinator[dict]):
         data = {
             **payload["data"],
             **self._status,
-            **self._green,
             "api_latency_ms": latency_ms,
             "last_update": datetime.now(UTC).isoformat(),
             "settings": self.settings,
@@ -121,13 +111,6 @@ class FastwebCoordinator(DataUpdateCoordinator[dict]):
         if maximum_w:
             data["load_percentage"] = round(power_w / maximum_w * 100, 1)
             data["power_headroom"] = round(maximum_w - power_w)
-        start = data.get("green_today_start")
-        end = data.get("green_today_end")
-        if start and end:
-            current = datetime.now(UTC)
-            data["green_active"] = (
-                datetime.fromisoformat(start) <= current <= datetime.fromisoformat(end)
-            )
         return data
 
     async def async_set_setting(self, group: str, key: str, value: object) -> None:

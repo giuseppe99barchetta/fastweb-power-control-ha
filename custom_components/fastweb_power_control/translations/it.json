@@ -28,7 +28,6 @@
   "entity": {
     "binary_sensor": {
       "connectivity": {"name": "Connessione Plug"},
-      "green_active": {"name": "Finestra energia verde"},
       "power_limit_warning": {"name": "Vicino al limite di potenza"},
       "stale_data": {"name": "Dati di consumo non aggiornati"}
     },
@@ -43,11 +42,6 @@
       "api_latency": {"name": "Tempo di risposta API"},
       "contracted_power": {"name": "Potenza contrattuale"},
       "energy_total": {"name": "Consumo cumulativo"},
-      "green_percentage": {"name": "Energia verde"},
-      "green_today_end": {"name": "Fine finestra verde oggi"},
-      "green_today_start": {"name": "Inizio finestra verde oggi"},
-      "green_tomorrow_end": {"name": "Fine finestra verde domani"},
-      "green_tomorrow_start": {"name": "Inizio finestra verde domani"},
       "last_update": {"name": "Ultimo aggiornamento riuscito"},
       "load_percentage": {"name": "Utilizzo potenza contrattuale"},
       "notifications_unread": {"name": "Notifiche non lette"},
