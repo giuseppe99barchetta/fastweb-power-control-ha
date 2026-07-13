@@ -2,7 +2,7 @@
   <img src="custom_components/fastweb_power_control/brand/logo.png" alt="Fastweb" width="226">
 </p>
 
-# Fastweb Power Control for Home Assistant
+# Fastweb Power Control for Home Assistant (HACS Custom Integration)
 
 [Italiano](README.it.md)
 
