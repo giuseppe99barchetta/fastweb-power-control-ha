@@ -16,13 +16,14 @@ copied cookies.
 
 ## Available entities
 
-- one real-time power sensor in W;
-- one cumulative kWh sensor compatible with the Energy dashboard;
-- switches for the master LED, meter LED, Internet LED, and buzzer;
-- switches for power-limit, provider-disconnection, monthly-budget, and
-  holiday-mode notifications;
-- a number entity for the monthly threshold in kWh;
-- start and end date entities for holiday mode.
+- **Sensors and controls:** realtime power, cumulative Energy-dashboard
+  consumption, contracted power, percentage used, available power, and green
+  energy percentage/windows;
+- **Alerts:** active green window and a configurable near-power-limit warning;
+- **Configuration:** LEDs, buzzer, Fastweb notifications, monthly threshold,
+  and holiday-mode dates;
+- **Diagnostics:** Plug connectivity, stale data, API response time, last
+  update, and unread notifications.
 
 Settings are refreshed periodically and immediately after every command. Set
 both holiday dates before enabling holiday mode. Contractual service
@@ -42,8 +43,12 @@ The repository must be public on GitHub before HACS can install it.
    **Fastweb Power Control**.
 6. Enter your MyFastweb username, password, and update interval.
 
-The interval can later be changed through **Configure**. Home Assistant 2026.3
-or later is required.
+The interval and power warning threshold can later be changed through
+**Configure**. Home Assistant 2026.3 or later is required.
+
+Download the complete diagnostic report from the integration page using
+**⋮ → Download diagnostics**; it is not an entity. Credentials, cookies, and
+tokens are not included.
 
 ## Authentication and cookie renewal
 
@@ -61,10 +66,9 @@ website and retry. This project does not attempt to bypass it.
 
 ## Energy in kWh
 
-Cumulative consumption is calculated from power samples, restored after
-restarts, and can be selected directly as grid consumption in the **Energy**
-dashboard. Periods without samples from Fastweb or Home Assistant are not
-estimated.
+Cumulative consumption is calculated from Fastweb's timestamped power samples,
+restored after restarts, and can be selected directly as grid consumption in
+the **Energy** dashboard. Gaps longer than ten minutes are not estimated.
 
 ## Manual installation
 

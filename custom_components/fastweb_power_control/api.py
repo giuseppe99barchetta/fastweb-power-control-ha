@@ -12,6 +12,7 @@ from http.cookiejar import Cookie, CookieJar
 from urllib.error import HTTPError, URLError
 from urllib.parse import urlencode, urljoin
 from urllib.request import HTTPCookieProcessor, Request, build_opener
+from zoneinfo import ZoneInfo
 
 DASHBOARD_URL = "https://fastweb.it/myfastweb/abbonamento/consumi-power-control/"
 AJAX_URL = DASHBOARD_URL + "ajax/"
@@ -48,6 +49,7 @@ NOTIFY_BOOL_FIELDS = {
     "monthly_budget": "monthly_energy_budget",
     "holiday_mode": "holiday_mode",
 }
+ROME = ZoneInfo("Europe/Rome")
 
 
 class FastwebError(RuntimeError):
@@ -150,6 +152,58 @@ def _iso_date(value: str) -> str | None:
         return datetime.strptime(value, "%d/%m/%Y").date().isoformat()
     except ValueError as error:
         raise FastwebError("invalid holiday date returned by Fastweb") from error
+
+
+def _parse_green(data: dict) -> dict:
+    current = data.get("current") or {}
+    percentage = current.get("percentage")
+    if not isinstance(percentage, (int, float)):
+        raise FastwebError("invalid Fastweb green energy response")
+
+    result = {"green_percentage": percentage}
+    today = datetime.now(ROME).date()
+    for window in (data.get("windows") or {}).values():
+        try:
+            day = datetime.strptime(window["date"], "%d/%m/%Y").date()
+            start = datetime.strptime(
+                f"{window['date']} {window['start']}", "%d/%m/%Y %H:%M"
+            ).replace(tzinfo=ROME)
+            end = datetime.strptime(
+                f"{window['date']} {window['end']}", "%d/%m/%Y %H:%M"
+            ).replace(tzinfo=ROME)
+        except (KeyError, TypeError, ValueError) as error:
+            raise FastwebError("invalid Fastweb green window response") from error
+        if day == today:
+            prefix = "green_today"
+        elif day == today + date.resolution:
+            prefix = "green_tomorrow"
+        else:
+            continue
+        result[f"{prefix}_start"] = start.isoformat()
+        result[f"{prefix}_end"] = end.isoformat()
+    return result
+
+
+def _parse_latest(data: dict) -> list[dict]:
+    latest = data.get("latest")
+    if not isinstance(latest, dict):
+        raise FastwebError("invalid Fastweb recent consumption response")
+    samples: dict[str, float] = {}
+    for fallback_time, sample in latest.items():
+        if not isinstance(sample, dict):
+            continue
+        timestamp = sample.get("time") or fallback_time
+        power = sample.get("power")
+        if not isinstance(timestamp, str) or not isinstance(power, (int, float)):
+            continue
+        try:
+            normalized = datetime.fromisoformat(timestamp.replace("Z", "+00:00"))
+        except ValueError:
+            continue
+        samples[normalized.isoformat()] = max(0.0, float(power))
+    if not samples:
+        raise FastwebError("Fastweb returned no recent consumption samples")
+    return [{"time": key, "power": samples[key]} for key in sorted(samples)]
 
 
 def _make_cookie(name: str, value: str) -> Cookie:
@@ -305,6 +359,23 @@ class FastwebClient:
             raise FastwebError(payload.get("errorMessage") or "Fastweb rejected the request")
         return payload
 
+    def _dashboard_action(
+        self, action: str, extra: dict[str, str] | None = None, timeout: float = 15
+    ) -> dict:
+        """Call one dashboard action and renew an expired session once."""
+        if self._token is None:
+            page = self._authenticated_page(DASHBOARD_URL, timeout)
+            self._token = extract_security_token(page)
+        fields = {"securityToken": self._token, "action": action, **(extra or {})}
+        try:
+            return self._post_json(AJAX_URL, DASHBOARD_URL, fields, timeout)
+        except AuthenticationRequired:
+            self._token = None
+            page = self._authenticated_page(DASHBOARD_URL, timeout)
+            self._token = extract_security_token(page)
+            fields["securityToken"] = self._token
+            return self._post_json(AJAX_URL, DASHBOARD_URL, fields, timeout)
+
     def _form(self, url: str, timeout: float) -> dict[str, str]:
         page = self._authenticated_page(url, timeout)
         self._token = extract_security_token(page)
@@ -313,27 +384,7 @@ class FastwebClient:
     def get_realtime(self, timeout: float = 15) -> dict:
         """Return realtime consumption, reusing the page token while valid."""
         with self._lock:
-            if self._token is None:
-                page = self._authenticated_page(DASHBOARD_URL, timeout)
-                self._token = extract_security_token(page)
-            try:
-                payload = self._post_json(
-                    AJAX_URL,
-                    DASHBOARD_URL,
-                    {"securityToken": self._token, "action": "consumptionRealtime"},
-                    timeout,
-                )
-            except AuthenticationRequired:
-                self._token = None
-                self._login(timeout)
-                page = self._load_page(DASHBOARD_URL, timeout)
-                self._token = extract_security_token(page)
-                payload = self._post_json(
-                    AJAX_URL,
-                    DASHBOARD_URL,
-                    {"securityToken": self._token, "action": "consumptionRealtime"},
-                    timeout,
-                )
+            payload = self._dashboard_action("consumptionRealtime", timeout=timeout)
             try:
                 realtime = payload["data"]["realtime"]
             except (KeyError, TypeError) as error:
@@ -342,6 +393,37 @@ class FastwebClient:
                 raise FastwebError("invalid Fastweb realtime response")
             payload["data"].pop("realtime_sin", None)
             return payload
+
+    def get_status(self, timeout: float = 15) -> dict:
+        """Return plug connectivity and unread portal notifications."""
+        with self._lock:
+            status_data = self._dashboard_action("plugStatus", timeout=timeout).get(
+                "data", {}
+            )
+            notify_data = self._dashboard_action(
+                "loadNotify", {"notificationId": ""}, timeout
+            ).get("data", {})
+            status = status_data.get("status")
+            unread = notify_data.get("unread")
+            if not isinstance(status, str) or not isinstance(unread, int):
+                raise FastwebError("invalid Fastweb status response")
+            return {
+                "plug_status": status,
+                "plug_online": status.upper() == "ONLINE",
+                "notifications_unread": max(0, unread),
+            }
+
+    def get_green(self, timeout: float = 15) -> dict:
+        """Return today's renewable-energy percentage and best-use windows."""
+        with self._lock:
+            payload = self._dashboard_action("consumptionGreen", timeout=timeout)
+            return _parse_green(payload.get("data") or {})
+
+    def get_latest(self, timeout: float = 15) -> list[dict]:
+        """Return recent power samples used to backfill cumulative energy."""
+        with self._lock:
+            payload = self._dashboard_action("consumptionLatest", timeout=timeout)
+            return _parse_latest(payload.get("data") or {})
 
     def _led_settings(self, fields: dict[str, str]) -> dict[str, bool]:
         return {key: fields.get(field) == "Y" for key, field in LED_FIELDS.items()}
@@ -448,3 +530,33 @@ def self_check() -> None:
     assert parse_cookie_header("a=1; b=2") == {"a": "1", "b": "2"}
     assert _portal_date("2026-07-13") == "13/07/2026"
     assert _iso_date("13/07/2026") == "2026-07-13"
+    today = datetime.now(ROME).date()
+    tomorrow = today + date.resolution
+    green = _parse_green(
+        {
+            "current": {"percentage": 42},
+            "windows": {
+                "today": {
+                    "date": today.strftime("%d/%m/%Y"),
+                    "start": "10:00",
+                    "end": "12:00",
+                },
+                "tomorrow": {
+                    "date": tomorrow.strftime("%d/%m/%Y"),
+                    "start": "11:00",
+                    "end": "13:00",
+                },
+            },
+        }
+    )
+    assert green["green_percentage"] == 42
+    assert "green_today_start" in green and "green_tomorrow_end" in green
+    latest = _parse_latest(
+        {
+            "latest": {
+                "2026-07-13T10:01:00+02:00": {"power": 200},
+                "2026-07-13T10:00:00+02:00": {"power": 100},
+            }
+        }
+    )
+    assert [sample["power"] for sample in latest] == [100.0, 200.0]

@@ -2,7 +2,9 @@
 
 DOMAIN = "fastweb_power_control"
 CONF_SCAN_INTERVAL = "scan_interval"
+CONF_WARNING_THRESHOLD = "warning_threshold"
 DEFAULT_SCAN_INTERVAL = 30
+DEFAULT_WARNING_THRESHOLD = 90
 
 
 def trapezoid_kwh(previous_w: float, current_w: float, elapsed_seconds: float) -> float:

@@ -16,13 +16,14 @@ mano.
 
 ## Entità disponibili
 
-- un sensore di potenza istantanea in W;
-- un sensore di consumo cumulativo in kWh compatibile con la dashboard Energia;
-- interruttori per LED generale, LED misuratore, LED Internet e buzzer;
-- interruttori per avviso superamento potenza, distacco fornitore, budget
-  mensile e modalità vacanza;
-- un numero per la soglia mensile in kWh;
-- due date per inizio e fine modalità vacanza.
+- **Sensori e controlli:** potenza istantanea, consumo cumulativo per la
+  dashboard Energia, potenza contrattuale, percentuale utilizzata, potenza
+  disponibile, percentuale e finestre di energia verde;
+- **Avvisi:** finestra verde attiva e consumo vicino al limite configurabile;
+- **Configurazione:** LED, buzzer, notifiche Fastweb, soglia mensile e date
+  della modalità vacanza;
+- **Diagnostica:** connessione Plug, dati non aggiornati, tempo di risposta API,
+  ultimo aggiornamento e notifiche non lette.
 
 Le impostazioni sono rilette periodicamente e aggiornate subito dopo ogni
 comando. Prima di attivare la modalità vacanza, imposta entrambe le date. La
@@ -42,8 +43,13 @@ Il repository deve essere pubblico su GitHub prima di poter essere installato.
    seleziona **Fastweb Power Control**.
 6. Inserisci username, password MyFastweb e intervallo di aggiornamento.
 
-L’intervallo può essere cambiato successivamente tramite **Configura**.
+L’intervallo e la soglia dell’avviso di potenza possono essere cambiati
+successivamente tramite **Configura**.
 Home Assistant 2026.3 o successivo è richiesto.
+
+Il file diagnostico completo si scarica dalla pagina dell’integrazione tramite
+il menu **⋮ → Scarica diagnostica**; non compare come entità. Credenziali,
+cookie e token non vengono inclusi.
 
 ## Autenticazione e rinnovo cookie
 
@@ -61,10 +67,10 @@ dal sito e riprova: il progetto non tenta di aggirarlo.
 
 ## Energia in kWh
 
-Il consumo cumulativo viene calcolato dai campioni di potenza, conservato ai
-riavvii e può essere selezionato direttamente come consumo di rete nella
-dashboard **Energia**. I periodi in cui Fastweb o Home Assistant non forniscono
-campioni non vengono stimati.
+Il consumo cumulativo viene calcolato dai campioni timestamped restituiti da
+Fastweb, conservato ai riavvii e può essere selezionato direttamente come
+consumo di rete nella dashboard **Energia**. I buchi superiori a dieci minuti
+non vengono stimati.
 
 ## Installazione manuale
 

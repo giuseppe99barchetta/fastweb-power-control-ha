@@ -18,7 +18,13 @@ from homeassistant.helpers.selector import (
 )
 
 from .api import FastwebClient, FastwebError, InvalidAuth
-from .const import CONF_SCAN_INTERVAL, DEFAULT_SCAN_INTERVAL, DOMAIN
+from .const import (
+    CONF_SCAN_INTERVAL,
+    CONF_WARNING_THRESHOLD,
+    DEFAULT_SCAN_INTERVAL,
+    DEFAULT_WARNING_THRESHOLD,
+    DOMAIN,
+)
 
 
 async def _validate(hass: HomeAssistant, data: dict) -> None:
@@ -97,7 +103,7 @@ class FastwebPowerControlConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
 
 
 class FastwebOptionsFlow(config_entries.OptionsFlowWithReload):
-    """Edit the polling interval without recreating the integration."""
+    """Edit runtime options without recreating the integration."""
 
     async def async_step_init(
         self, user_input: dict | None = None
@@ -108,6 +114,9 @@ class FastwebOptionsFlow(config_entries.OptionsFlowWithReload):
             CONF_SCAN_INTERVAL,
             self.config_entry.data.get(CONF_SCAN_INTERVAL, DEFAULT_SCAN_INTERVAL),
         )
+        warning_threshold = self.config_entry.options.get(
+            CONF_WARNING_THRESHOLD, DEFAULT_WARNING_THRESHOLD
+        )
         return self.async_show_form(
             step_id="init",
             data_schema=vol.Schema(
@@ -116,7 +125,14 @@ class FastwebOptionsFlow(config_entries.OptionsFlowWithReload):
                         NumberSelectorConfig(
                             min=10, max=300, step=5, mode=NumberSelectorMode.BOX
                         )
-                    )
+                    ),
+                    vol.Required(
+                        CONF_WARNING_THRESHOLD, default=warning_threshold
+                    ): NumberSelector(
+                        NumberSelectorConfig(
+                            min=50, max=100, step=1, mode=NumberSelectorMode.SLIDER
+                        )
+                    ),
                 }
             ),
         )

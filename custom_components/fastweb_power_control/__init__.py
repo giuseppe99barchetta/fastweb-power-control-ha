@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from datetime import timedelta
+from datetime import UTC, datetime, timedelta
 from functools import partial
 import logging
 from time import monotonic
@@ -16,8 +16,17 @@ from homeassistant.helpers.update_coordinator import DataUpdateCoordinator, Upda
 from .api import FastwebClient, FastwebError, InvalidAuth
 from .const import CONF_SCAN_INTERVAL, DEFAULT_SCAN_INTERVAL, DOMAIN
 
-PLATFORMS = (Platform.DATE, Platform.NUMBER, Platform.SENSOR, Platform.SWITCH)
+PLATFORMS = (
+    Platform.BINARY_SENSOR,
+    Platform.DATE,
+    Platform.NUMBER,
+    Platform.SENSOR,
+    Platform.SWITCH,
+)
 SETTINGS_REFRESH_SECONDS = 600
+STATUS_REFRESH_SECONDS = 60
+GREEN_REFRESH_SECONDS = 900
+LATEST_REFRESH_SECONDS = 300
 LOGGER = logging.getLogger(__name__)
 
 
@@ -41,29 +50,85 @@ class FastwebCoordinator(DataUpdateCoordinator[dict]):
             entry.data[CONF_USERNAME], entry.data[CONF_PASSWORD]
         )
         self.settings: dict = {}
+        self.latest_samples: list[dict] = []
+        self._status: dict = {}
+        self._green: dict = {}
         self._last_settings_update = 0.0
+        self._last_status_update = 0.0
+        self._last_green_update = 0.0
+        self._last_latest_update = 0.0
+
+    async def _async_optional(self, label: str, method):
+        """Refresh optional portal data without taking realtime power offline."""
+        try:
+            return await self.hass.async_add_executor_job(method)
+        except InvalidAuth:
+            raise
+        except FastwebError as error:
+            LOGGER.warning("Unable to refresh Fastweb %s: %s", label, error)
+            return None
 
     async def _async_update_data(self) -> dict:
         try:
+            started = monotonic()
             payload = await self.hass.async_add_executor_job(self.client.get_realtime)
+            latency_ms = round((monotonic() - started) * 1000)
+            now = monotonic()
             if (
                 not self.settings
-                or monotonic() - self._last_settings_update >= SETTINGS_REFRESH_SECONDS
+                or now - self._last_settings_update >= SETTINGS_REFRESH_SECONDS
             ):
-                try:
-                    self.settings = await self.hass.async_add_executor_job(
-                        self.client.get_settings
-                    )
-                    self._last_settings_update = monotonic()
-                except InvalidAuth:
-                    raise
-                except FastwebError as error:
-                    LOGGER.warning("Unable to refresh Fastweb settings: %s", error)
+                if settings := await self._async_optional(
+                    "settings", self.client.get_settings
+                ):
+                    self.settings = settings
+                    self._last_settings_update = now
+            if not self._status or now - self._last_status_update >= STATUS_REFRESH_SECONDS:
+                if status := await self._async_optional("status", self.client.get_status):
+                    self._status = status
+                    self._last_status_update = now
+            if not self._green or now - self._last_green_update >= GREEN_REFRESH_SECONDS:
+                if green := await self._async_optional(
+                    "green energy data", self.client.get_green
+                ):
+                    self._green = green
+                    self._last_green_update = now
+            if (
+                not self.latest_samples
+                or now - self._last_latest_update >= LATEST_REFRESH_SECONDS
+            ):
+                if latest := await self._async_optional(
+                    "recent consumption", self.client.get_latest
+                ):
+                    self.latest_samples = latest
+                    self._last_latest_update = now
         except InvalidAuth as error:
             raise ConfigEntryAuthFailed(str(error)) from error
         except FastwebError as error:
             raise UpdateFailed(str(error)) from error
-        return {**payload["data"], "settings": self.settings}
+
+        data = {
+            **payload["data"],
+            **self._status,
+            **self._green,
+            "api_latency_ms": latency_ms,
+            "last_update": datetime.now(UTC).isoformat(),
+            "settings": self.settings,
+        }
+        maximum_w = max(0.0, float(data.get("realtime_max") or 0) * 1000)
+        power_w = max(0.0, float(data["realtime"]))
+        data["contracted_power"] = maximum_w / 1000
+        if maximum_w:
+            data["load_percentage"] = round(power_w / maximum_w * 100, 1)
+            data["power_headroom"] = round(maximum_w - power_w)
+        start = data.get("green_today_start")
+        end = data.get("green_today_end")
+        if start and end:
+            current = datetime.now(UTC)
+            data["green_active"] = (
+                datetime.fromisoformat(start) <= current <= datetime.fromisoformat(end)
+            )
+        return data
 
     async def async_set_setting(self, group: str, key: str, value: object) -> None:
         """Write one setting and immediately publish the accepted state."""

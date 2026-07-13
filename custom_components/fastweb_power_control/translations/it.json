@@ -10,10 +10,7 @@
     },
     "step": {
       "reauth_confirm": {
-        "data": {
-          "password": "Password",
-          "username": "Username"
-        },
+        "data": {"password": "Password", "username": "Username"},
         "description": "Inserisci nuovamente le credenziali MyFastweb.",
         "title": "Ricollega Fastweb Power Control"
       },
@@ -29,59 +26,51 @@
     }
   },
   "entity": {
+    "binary_sensor": {
+      "connectivity": {"name": "Connessione Plug"},
+      "green_active": {"name": "Finestra energia verde"},
+      "power_limit_warning": {"name": "Vicino al limite di potenza"},
+      "stale_data": {"name": "Dati di consumo non aggiornati"}
+    },
     "date": {
-      "holiday_from": {
-        "name": "Inizio vacanza"
-      },
-      "holiday_to": {
-        "name": "Fine vacanza"
-      }
+      "holiday_from": {"name": "Inizio vacanza"},
+      "holiday_to": {"name": "Fine vacanza"}
     },
     "number": {
-      "monthly_threshold": {
-        "name": "Soglia energia mensile"
-      }
+      "monthly_threshold": {"name": "Soglia energia mensile"}
     },
     "sensor": {
-      "energy_total": {
-        "name": "Consumo cumulativo"
-      },
-      "power": {
-        "name": "Consumo istantaneo"
-      }
+      "api_latency": {"name": "Tempo di risposta API"},
+      "contracted_power": {"name": "Potenza contrattuale"},
+      "energy_total": {"name": "Consumo cumulativo"},
+      "green_percentage": {"name": "Energia verde"},
+      "green_today_end": {"name": "Fine finestra verde oggi"},
+      "green_today_start": {"name": "Inizio finestra verde oggi"},
+      "green_tomorrow_end": {"name": "Fine finestra verde domani"},
+      "green_tomorrow_start": {"name": "Inizio finestra verde domani"},
+      "last_update": {"name": "Ultimo aggiornamento riuscito"},
+      "load_percentage": {"name": "Utilizzo potenza contrattuale"},
+      "notifications_unread": {"name": "Notifiche non lette"},
+      "power": {"name": "Consumo istantaneo"},
+      "power_headroom": {"name": "Potenza disponibile"}
     },
     "switch": {
-      "buzzer": {
-        "name": "Buzzer limite potenza"
-      },
-      "holiday_mode": {
-        "name": "Avviso modalità vacanza"
-      },
-      "led_all": {
-        "name": "Tutti i LED"
-      },
-      "led_internet": {
-        "name": "LED connessione Internet"
-      },
-      "led_meter": {
-        "name": "LED dati contatore"
-      },
-      "monthly_budget": {
-        "name": "Avviso budget mensile"
-      },
-      "power_limit": {
-        "name": "Avviso superamento potenza"
-      },
-      "provider_disconnection": {
-        "name": "Avviso distacco fornitura"
-      }
+      "buzzer": {"name": "Buzzer limite potenza"},
+      "holiday_mode": {"name": "Avviso modalità vacanza"},
+      "led_all": {"name": "Tutti i LED"},
+      "led_internet": {"name": "LED connessione Internet"},
+      "led_meter": {"name": "LED dati contatore"},
+      "monthly_budget": {"name": "Avviso budget mensile"},
+      "power_limit": {"name": "Avviso superamento potenza"},
+      "provider_disconnection": {"name": "Avviso distacco fornitura"}
     }
   },
   "options": {
     "step": {
       "init": {
         "data": {
-          "scan_interval": "Intervallo di aggiornamento (secondi)"
+          "scan_interval": "Intervallo di aggiornamento (secondi)",
+          "warning_threshold": "Soglia avviso vicino al limite (%)"
         }
       }
     }
