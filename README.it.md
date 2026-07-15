@@ -47,6 +47,12 @@ L’intervallo e la soglia dell’avviso di potenza possono essere cambiati
 successivamente tramite **Configura**.
 Home Assistant 2026.3 o successivo è richiesto.
 
+L’intervallo indica ogni quanto Home Assistant interroga Fastweb, non ogni
+quanto Fastweb produce un nuovo campione. Fastweb può mantenere lo stesso
+valore per circa un minuto: con un intervallo di 30 secondi due letture
+consecutive possono quindi coincidere. Imposta 60 secondi per evitare richieste
+ridondanti, oppure 30 secondi per rilevare prima il campione successivo.
+
 Il file diagnostico completo si scarica dalla pagina dell’integrazione tramite
 il menu **⋮ → Scarica diagnostica**; non compare come entità. Credenziali,
 cookie e token non vengono inclusi.
@@ -104,6 +110,17 @@ Il traffico catturato dal router mostra destinazioni e frequenza, ma TLS 1.3
 protegge payload e credenziali. Per questo l’API MyFastweb è attualmente la via
 più pratica e manutenibile; l’alternativa di ricerca è analizzare il
 provisioning dell’app Android durante una nuova associazione della Plug.
+
+## Sostieni il progetto
+
+Se questa integrazione ti è utile, puoi supportarne lo sviluppo offrendo un
+caffè su Ko-fi.
+
+<p align="center">
+  <a href="https://ko-fi.com/ciuse99">
+    <img src="https://ko-fi.com/img/githubbutton_sm.svg" alt="Supportami su Ko-fi">
+  </a>
+</p>
 
 ## Sviluppo
 

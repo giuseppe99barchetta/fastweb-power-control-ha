@@ -45,6 +45,12 @@ The repository must be public on GitHub before HACS can install it.
 The interval and power warning threshold can later be changed through
 **Configure**. Home Assistant 2026.3 or later is required.
 
+The interval controls how often Home Assistant polls Fastweb, not how often
+Fastweb produces a new sample. Fastweb may keep the same value for about one
+minute, so two consecutive reads can match with a 30-second interval. Use 60
+seconds to avoid redundant requests, or 30 seconds to detect the next sample
+sooner.
+
 Download the complete diagnostic report from the integration page using
 **⋮ → Download diagnostics**; it is not an entity. Credentials, cookies, and
 tokens are not included.
@@ -100,6 +106,17 @@ Router captures reveal destinations and timing, while TLS 1.3 protects
 payloads and credentials. The MyFastweb API is therefore currently the most
 practical and maintainable route. The remaining research alternative is the
 Android app provisioning flow during a new Plug pairing.
+
+## Support the project
+
+If this integration is useful to you, you can support its development by
+buying me a coffee on Ko-fi.
+
+<p align="center">
+  <a href="https://ko-fi.com/ciuse99">
+    <img src="https://ko-fi.com/img/githubbutton_sm.svg" alt="Support me on Ko-fi">
+  </a>
+</p>
 
 ## Development
 
