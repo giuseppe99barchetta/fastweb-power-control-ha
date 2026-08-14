@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+import logging
+
 import voluptuous as vol
 
 from homeassistant import config_entries
@@ -25,6 +27,8 @@ from .const import (
     DEFAULT_WARNING_THRESHOLD,
     DOMAIN,
 )
+
+LOGGER = logging.getLogger(__name__)
 
 
 async def _validate(hass: HomeAssistant, data: dict) -> None:
@@ -65,9 +69,11 @@ class FastwebPowerControlConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
         if user_input is not None:
             try:
                 await _validate(self.hass, user_input)
-            except InvalidAuth:
+            except InvalidAuth as error:
+                LOGGER.warning("Fastweb authentication failed during setup: %s", error)
                 errors["base"] = "invalid_auth"
-            except FastwebError:
+            except FastwebError as error:
+                LOGGER.warning("Unable to connect to Fastweb during setup: %s", error)
                 errors["base"] = "cannot_connect"
             else:
                 return self.async_create_entry(title="Fastweb Power Control", data=user_input)
@@ -89,9 +95,15 @@ class FastwebPowerControlConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
             updated = {**entry.data, **user_input}
             try:
                 await _validate(self.hass, updated)
-            except InvalidAuth:
+            except InvalidAuth as error:
+                LOGGER.warning(
+                    "Fastweb authentication failed during reauthentication: %s", error
+                )
                 errors["base"] = "invalid_auth"
-            except FastwebError:
+            except FastwebError as error:
+                LOGGER.warning(
+                    "Unable to connect to Fastweb during reauthentication: %s", error
+                )
                 errors["base"] = "cannot_connect"
             else:
                 return self.async_update_reload_and_abort(entry, data_updates=updated)
