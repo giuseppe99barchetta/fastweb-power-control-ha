@@ -252,14 +252,26 @@ class FastwebClient:
         except AuthenticationRequired:
             self._token = None
             self._login(timeout)
-            return self._load_page(url, timeout)
+            try:
+                return self._load_page(url, timeout)
+            except AuthenticationRequired as error:
+                raise InvalidAuth(
+                    "Fastweb did not establish an authenticated session"
+                ) from error
 
     def _login(self, timeout: float) -> None:
         if not self.username or not self.password:
             raise InvalidAuth("missing Fastweb credentials")
 
-        with self._open(Request(LOGIN_URL, headers={"User-Agent": USER_AGENT}), timeout) as response:
-            page = response.read().decode(response.headers.get_content_charset() or "utf-8")
+        try:
+            with self._open(
+                Request(LOGIN_URL, headers={"User-Agent": USER_AGENT}), timeout
+            ) as response:
+                page = response.read().decode(
+                    response.headers.get_content_charset() or "utf-8"
+                )
+        except AuthenticationRequired as error:
+            raise InvalidAuth("Fastweb rejected the login page request") from error
         fields = extract_form_fields(page, "formLogin")
         fields.update(
             {
@@ -282,8 +294,13 @@ class FastwebClient:
                 "X-Requested-With": "XMLHttpRequest",
             },
         )
-        with self._open(request, timeout) as response:
-            raw = response.read().decode(response.headers.get_content_charset() or "utf-8")
+        try:
+            with self._open(request, timeout) as response:
+                raw = response.read().decode(
+                    response.headers.get_content_charset() or "utf-8"
+                )
+        except AuthenticationRequired as error:
+            raise InvalidAuth("Fastweb rejected the login request") from error
         try:
             payload = json.loads(raw)
         except json.JSONDecodeError as error:
@@ -296,12 +313,30 @@ class FastwebClient:
 
         for enabled, url in ((payload.get("rm"), SET_RM_URL), (payload.get("mt"), SET_MT_URL)):
             if enabled:
-                with self._open(Request(url, headers={"User-Agent": USER_AGENT}), timeout) as response:
-                    response.read()
+                try:
+                    with self._open(
+                        Request(
+                            url,
+                            headers={"User-Agent": USER_AGENT, "Referer": LOGIN_URL},
+                        ),
+                        timeout,
+                    ) as response:
+                        response.read()
+                except AuthenticationRequired as error:
+                    raise InvalidAuth("Fastweb rejected a post-login redirect") from error
         if payload.get("redirectURI"):
             url = urljoin(LOGIN_URL, payload["redirectURI"])
-            with self._open(Request(url, headers={"User-Agent": USER_AGENT}), timeout) as response:
-                response.read()
+            try:
+                with self._open(
+                    Request(
+                        url,
+                        headers={"User-Agent": USER_AGENT, "Referer": LOGIN_URL},
+                    ),
+                    timeout,
+                ) as response:
+                    response.read()
+            except AuthenticationRequired as error:
+                raise InvalidAuth("Fastweb rejected the post-login redirect") from error
 
     def _post_json(
         self, url: str, referer: str, fields: dict[str, str], timeout: float
