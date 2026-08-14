@@ -204,10 +204,13 @@ class FastwebClient:
         self.jar = CookieJar()
         self._lock = RLock()
         self._token: str | None = None
+        # ``build_opener`` creates an SSL context and loads system certificates.
+        # Keep that blocking work out of Home Assistant's event loop; callers
+        # invoke the synchronous request methods in the executor.
+        self._opener = None
         for name, value in parse_cookie_header(cookie).items():
             if name in AUTH_COOKIE_NAMES:
                 self.jar.set_cookie(_make_cookie(name, value))
-        self.opener = build_opener(HTTPCookieProcessor(self.jar))
 
     @property
     def cookie_header(self) -> str:
@@ -224,8 +227,10 @@ class FastwebClient:
             )
 
     def _open(self, request: Request, timeout: float):
+        if self._opener is None:
+            self._opener = build_opener(HTTPCookieProcessor(self.jar))
         try:
-            return self.opener.open(request, timeout=timeout)
+            return self._opener.open(request, timeout=timeout)
         except HTTPError as error:
             if error.code in {401, 403}:
                 raise AuthenticationRequired("Fastweb session expired") from error
