@@ -10,9 +10,9 @@ from homeassistant.const import CONF_PASSWORD, CONF_USERNAME
 from homeassistant.core import HomeAssistant
 
 from .api import AUTH_COOKIE_NAMES
-from .const import DOMAIN
+from .const import CONF_COOKIE, DOMAIN
 
-TO_REDACT = {CONF_PASSWORD, CONF_USERNAME}
+TO_REDACT = {CONF_COOKIE, CONF_PASSWORD, CONF_USERNAME}
 
 
 async def async_get_config_entry_diagnostics(

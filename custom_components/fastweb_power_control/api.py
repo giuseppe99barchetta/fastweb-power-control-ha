@@ -125,6 +125,8 @@ def encode_multipart(fields: dict[str, str]) -> tuple[bytes, str]:
 
 def parse_cookie_header(header: str) -> dict[str, str]:
     cookies: dict[str, str] = {}
+    if header.lower().startswith("cookie:"):
+        header = header.split(":", 1)[1].strip()
     for part in header.split(";"):
         name, separator, value = part.strip().partition("=")
         if separator and name:
@@ -530,6 +532,7 @@ def self_check() -> None:
     body, content_type = encode_multipart({"action": "consumptionRealtime"})
     assert b"consumptionRealtime" in body and "boundary=" in content_type
     assert parse_cookie_header("a=1; b=2") == {"a": "1", "b": "2"}
+    assert parse_cookie_header("Cookie: a=1; b=2") == {"a": "1", "b": "2"}
     assert _portal_date("2026-07-13") == "13/07/2026"
     assert _iso_date("13/07/2026") == "2026-07-13"
     latest = _parse_latest(

@@ -10,17 +10,22 @@
     },
     "step": {
       "reauth_confirm": {
-        "data": {"password": "Password", "username": "Username"},
-        "description": "Inserisci nuovamente le credenziali MyFastweb.",
+        "data": {
+          "cookie": "Cookie di sessione (facoltativo)",
+          "password": "Password",
+          "username": "Username"
+        },
+        "description": "Inserisci nuovamente le credenziali MyFastweb. Se il login automatico è bloccato, incolla un cookie di sessione ottenuto dal browser.",
         "title": "Ricollega Fastweb Power Control"
       },
       "user": {
         "data": {
+          "cookie": "Cookie di sessione (facoltativo)",
           "password": "Password",
           "scan_interval": "Intervallo di aggiornamento (secondi)",
           "username": "Username"
         },
-        "description": "Accedi a MyFastweb. La sessione e i cookie vengono rinnovati automaticamente.",
+        "description": "Accedi a MyFastweb. Se il login automatico è bloccato, incolla un cookie di sessione ottenuto dal browser. Trattalo come una password.",
         "title": "Fastweb Power Control"
       }
     }

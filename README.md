@@ -8,8 +8,9 @@
 
 An unofficial custom integration for reading and configuring Fastweb Power
 Control from Home Assistant. It uses the same private endpoints as the
-MyFastweb portal, with no MQTT, external Python dependencies, or manually
-copied cookies.
+MyFastweb portal, with no MQTT or external Python dependencies. A manually
+copied session cookie is available as a fallback when Fastweb blocks automatic
+sign-in.
 
 > This project is not affiliated with or supported by Fastweb. The API is not
 > public and may change without notice.
@@ -40,7 +41,9 @@ The repository must be public on GitHub before HACS can install it.
 4. Restart Home Assistant.
 5. Open **Settings → Devices & services → Add integration** and select
    **Fastweb Power Control**.
-6. Enter your MyFastweb username, password, and update interval.
+6. Enter your MyFastweb username, password, and update interval. If automatic
+   sign-in is blocked after a reCAPTCHA, also enter the optional **Session
+   cookie** as described below.
 
 The interval and power warning threshold can later be changed through
 **Configure**. Home Assistant 2026.3 or later is required.
@@ -59,15 +62,19 @@ tokens are not included.
 
 The setup flow verifies credentials immediately. The integration:
 
-1. keeps a Fastweb session in memory;
+1. keeps a Fastweb session and its cookies in the configuration entry;
 2. automatically applies every received `Set-Cookie` header;
 3. reuses the persistent `FWB_RM` cookie to renew the session;
 4. signs in again after session expiry or a Home Assistant restart;
 5. starts Home Assistant’s reauthentication flow when credentials are no
    longer valid.
 
-No cookie file is needed. If Fastweb requires a reCAPTCHA, sign in once on the
-website and retry. This project does not attempt to bypass it.
+Normally no cookie is needed. If Fastweb blocks automatic sign-in after a
+reCAPTCHA, sign in to MyFastweb in a browser and copy `FWB_RM=...` (or the
+complete `Cookie` header) from a request to `fastweb.it` into the **Session
+cookie** field. Treat the value as a credential: never publish it or include it
+in issue reports. The integration renews it and excludes it from diagnostics.
+This project does not attempt to bypass reCAPTCHA or other anti-bot protections.
 
 ## Energy in kWh
 

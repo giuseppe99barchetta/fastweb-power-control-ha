@@ -14,7 +14,7 @@ from homeassistant.exceptions import ConfigEntryAuthFailed, HomeAssistantError
 from homeassistant.helpers.update_coordinator import DataUpdateCoordinator, UpdateFailed
 
 from .api import FastwebClient, FastwebError, InvalidAuth
-from .const import CONF_SCAN_INTERVAL, DEFAULT_SCAN_INTERVAL, DOMAIN
+from .const import CONF_COOKIE, CONF_SCAN_INTERVAL, DEFAULT_SCAN_INTERVAL, DOMAIN
 
 PLATFORMS = (
     Platform.BINARY_SENSOR,
@@ -46,7 +46,9 @@ class FastwebCoordinator(DataUpdateCoordinator[dict]):
         )
         self.entry = entry
         self.client = FastwebClient(
-            entry.data[CONF_USERNAME], entry.data[CONF_PASSWORD]
+            entry.data[CONF_USERNAME],
+            entry.data[CONF_PASSWORD],
+            entry.data.get(CONF_COOKIE, ""),
         )
         self.settings: dict = {}
         self.latest_samples: list[dict] = []
@@ -54,6 +56,16 @@ class FastwebCoordinator(DataUpdateCoordinator[dict]):
         self._last_settings_update = 0.0
         self._last_status_update = 0.0
         self._last_latest_update = 0.0
+
+    def _store_authenticated_cookie(self) -> None:
+        """Persist the renewable Fastweb cookies without exposing their values."""
+        cookie = self.client.cookie_header
+        if not cookie or cookie == self.entry.data.get(CONF_COOKIE, ""):
+            return
+        self.hass.config_entries.async_update_entry(
+            self.entry,
+            data={**self.entry.data, CONF_COOKIE: cookie},
+        )
 
     async def _async_optional(self, label: str, method):
         """Refresh optional portal data without taking realtime power offline."""
@@ -111,6 +123,7 @@ class FastwebCoordinator(DataUpdateCoordinator[dict]):
         if maximum_w:
             data["load_percentage"] = round(power_w / maximum_w * 100, 1)
             data["power_headroom"] = round(maximum_w - power_w)
+        self._store_authenticated_cookie()
         return data
 
     async def async_set_setting(self, group: str, key: str, value: object) -> None:
@@ -133,6 +146,7 @@ class FastwebCoordinator(DataUpdateCoordinator[dict]):
 
         self.settings = {**self.settings, group: updated}
         self._last_settings_update = monotonic()
+        self._store_authenticated_cookie()
         self.async_set_updated_data({**(self.data or {}), "settings": self.settings})
 
 

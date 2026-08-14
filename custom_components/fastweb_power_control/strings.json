@@ -10,17 +10,22 @@
     },
     "step": {
       "reauth_confirm": {
-        "data": {"password": "Password", "username": "Username"},
-        "description": "Enter your MyFastweb credentials again.",
+        "data": {
+          "cookie": "Session cookie (optional)",
+          "password": "Password",
+          "username": "Username"
+        },
+        "description": "Enter your MyFastweb credentials again. If automatic login is blocked, paste a session cookie from a browser login.",
         "title": "Reconnect Fastweb Power Control"
       },
       "user": {
         "data": {
+          "cookie": "Session cookie (optional)",
           "password": "Password",
           "scan_interval": "Update interval (seconds)",
           "username": "Username"
         },
-        "description": "Sign in to MyFastweb. The session and cookies are renewed automatically.",
+        "description": "Sign in to MyFastweb. If automatic login is blocked, paste a session cookie from a browser login. Treat the cookie like a password.",
         "title": "Fastweb Power Control"
       }
     }

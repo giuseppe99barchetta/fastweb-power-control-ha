@@ -8,8 +8,9 @@
 
 Integrazione custom non ufficiale per leggere e configurare Fastweb Power
 Control da Home Assistant. Usa gli stessi endpoint privati del portale
-MyFastweb: non richiede MQTT, dipendenze Python esterne o cookie copiati a
-mano.
+MyFastweb: non richiede MQTT o dipendenze Python esterne. Un cookie di
+sessione copiato manualmente è disponibile come alternativa quando Fastweb
+blocca il login automatico.
 
 > Il progetto non è affiliato né supportato da Fastweb. L’API non è pubblica e
 > può cambiare senza preavviso.
@@ -41,7 +42,9 @@ Il repository deve essere pubblico su GitHub prima di poter essere installato.
 4. Riavvia Home Assistant.
 5. Apri **Impostazioni → Dispositivi e servizi → Aggiungi integrazione** e
    seleziona **Fastweb Power Control**.
-6. Inserisci username, password MyFastweb e intervallo di aggiornamento.
+6. Inserisci username, password MyFastweb e intervallo di aggiornamento. Se il
+   login automatico è bloccato dopo un reCAPTCHA, inserisci anche il **Cookie
+   di sessione** facoltativo come descritto sotto.
 
 L’intervallo e la soglia dell’avviso di potenza possono essere cambiati
 successivamente tramite **Configura**.
@@ -61,15 +64,20 @@ cookie e token non vengono inclusi.
 
 Il flusso di configurazione verifica subito le credenziali. L’integrazione:
 
-1. mantiene una sessione Fastweb in memoria;
+1. mantiene una sessione Fastweb e i relativi cookie nella configurazione;
 2. applica automaticamente ogni `Set-Cookie` ricevuto;
 3. riutilizza il cookie persistente `FWB_RM` per rinnovare la sessione;
 4. effettua nuovamente il login quando la sessione scade o Home Assistant si
    riavvia;
 5. avvia il flusso di riautenticazione se le credenziali non sono più valide.
 
-Non serve alcun file cookie. Se Fastweb richiede un reCAPTCHA, accedi una volta
-dal sito e riprova: il progetto non tenta di aggirarlo.
+Nella norma non serve inserire il cookie. Se Fastweb blocca il login automatico
+dopo un reCAPTCHA, accedi manualmente a MyFastweb e copia il valore
+`FWB_RM=...` (oppure l'intero header `Cookie`) della richiesta verso
+`fastweb.it` nel campo **Cookie di sessione**. Il valore equivale a una
+credenziale: non pubblicarlo né includerlo in segnalazioni. L'integrazione ne
+gestisce il rinnovo e lo esclude dalla diagnostica. Il progetto non tenta di
+aggirare reCAPTCHA o altre protezioni anti-bot.
 
 ## Energia in kWh
 

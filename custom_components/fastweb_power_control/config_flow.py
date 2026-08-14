@@ -21,6 +21,7 @@ from homeassistant.helpers.selector import (
 
 from .api import FastwebClient, FastwebError, InvalidAuth
 from .const import (
+    CONF_COOKIE,
     CONF_SCAN_INTERVAL,
     CONF_WARNING_THRESHOLD,
     DEFAULT_SCAN_INTERVAL,
@@ -31,15 +32,22 @@ from .const import (
 LOGGER = logging.getLogger(__name__)
 
 
-async def _validate(hass: HomeAssistant, data: dict) -> None:
-    client = FastwebClient(data[CONF_USERNAME], data[CONF_PASSWORD])
+async def _validate(hass: HomeAssistant, data: dict) -> str:
+    """Validate credentials and return the renewable Fastweb cookies."""
+    client = FastwebClient(
+        data[CONF_USERNAME], data[CONF_PASSWORD], data.get(CONF_COOKIE, "")
+    )
     await hass.async_add_executor_job(client.get_realtime)
+    return client.cookie_header
 
 
 def _credentials_schema(username: str = "", include_interval: bool = False) -> vol.Schema:
     fields: dict = {
         vol.Required(CONF_USERNAME, default=username): TextSelector(TextSelectorConfig()),
         vol.Required(CONF_PASSWORD): TextSelector(
+            TextSelectorConfig(type=TextSelectorType.PASSWORD)
+        ),
+        vol.Optional(CONF_COOKIE): TextSelector(
             TextSelectorConfig(type=TextSelectorType.PASSWORD)
         ),
     }
@@ -68,7 +76,7 @@ class FastwebPowerControlConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
         errors: dict[str, str] = {}
         if user_input is not None:
             try:
-                await _validate(self.hass, user_input)
+                cookie = await _validate(self.hass, user_input)
             except InvalidAuth as error:
                 LOGGER.warning("Fastweb authentication failed during setup: %s", error)
                 errors["base"] = "invalid_auth"
@@ -76,7 +84,14 @@ class FastwebPowerControlConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
                 LOGGER.warning("Unable to connect to Fastweb during setup: %s", error)
                 errors["base"] = "cannot_connect"
             else:
-                return self.async_create_entry(title="Fastweb Power Control", data=user_input)
+                data = {
+                    key: value
+                    for key, value in user_input.items()
+                    if key != CONF_COOKIE
+                }
+                if cookie:
+                    data[CONF_COOKIE] = cookie
+                return self.async_create_entry(title="Fastweb Power Control", data=data)
         return self.async_show_form(
             step_id="user",
             data_schema=_credentials_schema(include_interval=True),
@@ -94,7 +109,7 @@ class FastwebPowerControlConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
         if user_input is not None:
             updated = {**entry.data, **user_input}
             try:
-                await _validate(self.hass, updated)
+                cookie = await _validate(self.hass, updated)
             except InvalidAuth as error:
                 LOGGER.warning(
                     "Fastweb authentication failed during reauthentication: %s", error
@@ -106,6 +121,10 @@ class FastwebPowerControlConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
                 )
                 errors["base"] = "cannot_connect"
             else:
+                if cookie:
+                    updated[CONF_COOKIE] = cookie
+                elif CONF_COOKIE in user_input:
+                    updated.pop(CONF_COOKIE, None)
                 return self.async_update_reload_and_abort(entry, data_updates=updated)
         return self.async_show_form(
             step_id="reauth_confirm",
