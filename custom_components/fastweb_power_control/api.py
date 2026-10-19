@@ -257,6 +257,15 @@ class FastwebClient:
             try:
                 return self._load_page(url, timeout)
             except AuthenticationRequired as error:
+                # Fastweb sometimes creates the renewable session cookie on
+                # www.fastweb.it before its non-www portal recognizes the login.
+                # Visiting the same page through www completes that handshake.
+                www_url = url.replace("https://fastweb.it/", "https://www.fastweb.it/", 1)
+                if www_url != url:
+                    try:
+                        return self._load_page(www_url, timeout)
+                    except AuthenticationRequired:
+                        pass
                 raise InvalidAuth(
                     "Fastweb did not establish an authenticated session"
                 ) from error
