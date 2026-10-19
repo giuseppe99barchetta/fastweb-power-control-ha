@@ -17,18 +17,43 @@ blocca il login automatico.
 
 ## Entità disponibili
 
-- **Sensori e controlli:** potenza istantanea, consumo cumulativo per la
-  dashboard Energia, potenza contrattuale, percentuale utilizzata e potenza
-  disponibile;
-- **Avvisi:** consumo vicino al limite configurabile;
+- **Sensori e controlli:** potenza istantanea, picco di potenza di oggi,
+  consumo cumulativo per la dashboard Energia, potenza contrattuale,
+  percentuale utilizzata e potenza disponibile;
+- **Storico:** consumo dell’ultimo giorno, degli ultimi 7 e 30 giorni, più la
+  stima del portale per elettrodomestico (frigorifero, lavatrice, standby, …),
+  aggiornati ogni ora;
+- **Avvisi:** consumo vicino al limite configurabile ed evento **Notifica del
+  portale** per ogni nuova notifica Fastweb (potenza superata, interruzione di
+  fornitura, …) con titolo e testo;
 - **Configurazione:** LED, buzzer, notifiche Fastweb, soglia mensile e date
   della modalità vacanza;
-- **Diagnostica:** connessione Plug, dati non aggiornati, tempo di risposta API
-  e notifiche non lette.
+- **Diagnostica:** connessione Plug, dati non aggiornati, tempo di risposta API,
+  ultimo aggiornamento e notifiche non lette.
 
 Le impostazioni sono rilette periodicamente e aggiornate subito dopo ogni
-comando. Prima di attivare la modalità vacanza, imposta entrambe le date. La
-disattivazione contrattuale del servizio non viene esposta in Home Assistant.
+comando. Stato della Plug e impostazioni che Fastweb smette di restituire
+diventano non disponibili dopo alcuni cicli, invece di mostrare valori vecchi.
+La disattivazione contrattuale del servizio non viene esposta in Home
+Assistant.
+
+## Servizi e blueprint
+
+`fastweb_power_control.set_holiday_period` scrive entrambe le date di vacanza e
+l’avviso modalità vacanza in un’unica richiesta, così il portale non vede mai un
+intervallo non valido:
+
+```yaml
+action: fastweb_power_control.set_holiday_period
+data:
+  start: "2026-08-01"
+  end: "2026-08-21"
+  enable: true
+```
+
+Il [blueprint di distacco carichi](blueprints/automation/fastweb_power_control/power_limit_load_shedding.yaml)
+spegne i carichi scelti quando l’uso della potenza contrattuale resta sopra una
+soglia, e può inviare una notifica.
 
 ## Installazione con HACS
 
@@ -47,7 +72,8 @@ Il repository deve essere pubblico su GitHub prima di poter essere installato.
    di sessione** facoltativo come descritto sotto.
 
 L’intervallo e la soglia dell’avviso di potenza possono essere cambiati
-successivamente tramite **Configura**.
+successivamente tramite **Configura**; credenziali e cookie di sessione tramite
+**Riconfigura**.
 Home Assistant 2026.3 o successivo è richiesto.
 
 L’intervallo indica ogni quanto Home Assistant interroga Fastweb, non ogni
@@ -72,7 +98,7 @@ Il flusso di configurazione verifica subito le credenziali. L’integrazione:
 5. avvia il flusso di riautenticazione se le credenziali non sono più valide.
 
 Nella norma non serve inserire il cookie. Se Fastweb blocca il login automatico
-dopo un reCAPTCHA, accedi manualmente a MyFastweb e copia il valore
+dopo un reCAPTCHA (lo segnala un avviso in Riparazioni), accedi manualmente a MyFastweb e copia il valore
 `FWB_RM=...` (oppure l'intero header `Cookie`) della richiesta verso
 `fastweb.it` nel campo **Cookie di sessione**. Il valore equivale a una
 credenziale: non pubblicarlo né includerlo in segnalazioni. L'integrazione ne
@@ -95,10 +121,12 @@ l’integrazione dalla UI.
 ## Client diagnostico
 
 ```powershell
-python .\fastweb_power_control.py --self-test
-python .\fastweb_power_control.py `
+python .\tools\fastweb_power_control.py `
   --credentials-file .\fastweb_power_control.credentials
 ```
+
+`tools/configuration.yaml.example` mostra il vecchio sensore `command_line`
+basato sullo stesso client.
 
 Il file credenziali, escluso da Git, contiene:
 
@@ -132,9 +160,12 @@ caffè su Ko-fi.
 
 ## Sviluppo
 
-```powershell
-python .\fastweb_power_control.py --self-test
+```bash
+pip install -r requirements_test.txt
+python -m pytest
 python -m ruff check .
 ```
 
-Il workflow GitHub esegue HACS Action e hassfest a ogni push e pull request.
+I test richiedono Python 3.14 e l’ambiente di test di Home Assistant, che si
+installa su Linux, macOS o WSL. Il workflow GitHub esegue HACS Action,
+hassfest, Ruff e i test a ogni push e pull request.

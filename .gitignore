@@ -8,3 +8,5 @@ __pycache__/
 *.cookie
 *.credentials
 *.cookie.tmp
+.pytest_cache/
+.coverage

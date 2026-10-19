@@ -3,15 +3,16 @@
 from __future__ import annotations
 
 from datetime import date, datetime
-import json
-import re
-from threading import RLock
-import uuid
 from html.parser import HTMLParser
 from http.cookiejar import Cookie, CookieJar
+import json
+from pathlib import Path
+import re
+from threading import RLock
 from urllib.error import HTTPError, URLError
 from urllib.parse import urlencode, urljoin, urlsplit
 from urllib.request import HTTPCookieProcessor, Request, build_opener
+import uuid
 
 DASHBOARD_URL = "https://fastweb.it/myfastweb/abbonamento/consumi-power-control/"
 AJAX_URL = DASHBOARD_URL + "ajax/"
@@ -25,7 +26,20 @@ LOGIN_URL = "https://fastweb.it/myfastweb/accesso/login/"
 LOGIN_AJAX_URL = LOGIN_URL + "ajax/"
 SET_RM_URL = "https://www.fastweb.it/myfastweb/redirect/set-rm/"
 SET_MT_URL = "https://fastweb.it/myfastweb/redirect/set-mt/"
-USER_AGENT = "Mozilla/5.0 FastwebPowerControlHA/0.2"
+
+def _manifest_version() -> str:
+    try:
+        manifest = json.loads(
+            Path(__file__).with_name("manifest.json").read_text(encoding="utf-8")
+        )
+    except (OSError, ValueError):
+        return "dev"
+    return str(manifest.get("version", "dev"))
+
+
+USER_AGENT = f"Mozilla/5.0 FastwebPowerControlHA/{_manifest_version()}"
+# MyFastweb sets cookies on both hosts; the www handshake may issue host-only ones.
+COOKIE_DOMAINS = ("fastweb.it", "www.fastweb.it")
 AUTH_COOKIE_NAMES = (
     "FWB_RM",
     "PHPSESSID",
@@ -48,6 +62,11 @@ NOTIFY_BOOL_FIELDS = {
     "monthly_budget": "monthly_energy_budget",
     "holiday_mode": "holiday_mode",
 }
+HISTORY_WEEK = "last-seven-days"
+HISTORY_MONTH = "last-thirty-days"
+NOTIFICATION_FIELDS = ("id", "type", "title", "message", "created_at", "read")
+# The portal fills unset holiday dates with these placeholders.
+PORTAL_EMPTY_DATES = frozenset({"01/01/2020", "31/12/2020"})
 
 
 class FastwebError(RuntimeError):
@@ -60,6 +79,10 @@ class AuthenticationRequired(FastwebError):
 
 class InvalidAuth(FastwebError):
     """The supplied credentials cannot establish a Fastweb session."""
+
+
+class RecaptchaRequired(InvalidAuth):
+    """Fastweb wants a reCAPTCHA, so only a browser session cookie can help."""
 
 
 class _TokenParser(HTMLParser):
@@ -146,7 +169,7 @@ def _portal_date(value: date | str | None) -> str:
 
 
 def _iso_date(value: str) -> str | None:
-    if not value or value in {"01/01/2020", "31/12/2020"}:
+    if not value or value in PORTAL_EMPTY_DATES:
         return None
     try:
         return datetime.strptime(value, "%d/%m/%Y").date().isoformat()
@@ -174,6 +197,78 @@ def _parse_latest(data: dict) -> list[dict]:
     if not samples:
         raise FastwebError("Fastweb returned no recent consumption samples")
     return [{"time": key, "power": samples[key]} for key in sorted(samples)]
+
+
+def _parse_notifications(items: object) -> list[dict]:
+    """Keep the portal notification fields, oldest first; skip malformed items."""
+    if not isinstance(items, list):
+        return []
+    notifications = [
+        {key: item.get(key) for key in NOTIFICATION_FIELDS}
+        for item in items
+        if isinstance(item, dict)
+        and isinstance(item.get("id"), str)
+        and isinstance(item.get("created_at"), str)
+    ]
+    return sorted(notifications, key=lambda item: item["created_at"])
+
+
+def _frame_rows(frame: object) -> list[dict[str, float]]:
+    """Turn a pandas-style ``{index, columns, data}`` frame into one dict per row."""
+    if not isinstance(frame, dict):
+        raise FastwebError("invalid Fastweb consumption history response")
+    columns, rows = frame.get("columns"), frame.get("data")
+    if not isinstance(columns, list) or not isinstance(rows, list):
+        raise FastwebError("invalid Fastweb consumption history response")
+    return [
+        {
+            str(column): max(0.0, float(value)) / 1000
+            for column, value in zip(columns, row, strict=False)
+            if isinstance(value, (int, float))
+        }
+        for row in rows
+        if isinstance(row, list)
+    ]
+
+
+def _parse_history(data: dict) -> dict:
+    """Normalize ``consumptionOwnMedium`` (values in Wh) to kWh."""
+    medium = data.get("medium_o")
+    totals = data.get("totals")
+    if not isinstance(medium, dict) or not isinstance(totals, dict):
+        raise FastwebError("invalid Fastweb consumption history response")
+    total = medium.get("total_consumption") or {}
+    categories = _frame_rows(medium.get("electricity_data"))
+    breakdown = (medium.get("daily_breakdown") or {}).get("selected_period")
+    daily_categories = _frame_rows(breakdown) if breakdown else []
+    period = totals.get("period")
+    if isinstance(period, list):
+        days = [
+            {"day": item["day"], "energy": max(0.0, float(item["total"])) / 1000}
+            for item in period
+            if isinstance(item, dict)
+            and isinstance(item.get("day"), str)
+            and isinstance(item.get("total"), (int, float))
+        ]
+    else:
+        # Thirty-day responses total by week; daily values come from the breakdown.
+        index = breakdown.get("index") if isinstance(breakdown, dict) else None
+        days = [
+            {"day": str(day)[:10], "energy": sum(row.values())}
+            for day, row in zip(index or [], daily_categories, strict=False)
+        ]
+    if not days or not isinstance(total.get("selected_period"), (int, float)):
+        raise FastwebError("Fastweb returned no consumption history")
+    previous = total.get("previous_period")
+    return {
+        "period_energy": max(0.0, float(total["selected_period"])) / 1000,
+        "previous_period_energy": (
+            max(0.0, float(previous)) / 1000 if isinstance(previous, (int, float)) else None
+        ),
+        "days": days,
+        "categories": categories[0] if categories else {},
+        "last_day_categories": daily_categories[-1] if daily_categories else {},
+    }
 
 
 def _make_cookie(name: str, value: str) -> Cookie:
@@ -220,7 +315,7 @@ class FastwebClient:
             cookies = {
                 cookie.name: cookie.value
                 for cookie in self.jar
-                if cookie.domain.lstrip(".") == "fastweb.it"
+                if cookie.domain.lstrip(".") in COOKIE_DOMAINS
                 and cookie.name in AUTH_COOKIE_NAMES
                 and not cookie.is_expired()
             }
@@ -339,7 +434,9 @@ class FastwebClient:
         if payload.get("errorCode") != 0:
             if payload.get("needRecaptcha"):
                 # ponytail: CAPTCHA bypass is not a valid automation path.
-                raise InvalidAuth("Fastweb requires reCAPTCHA; automatic login stopped")
+                raise RecaptchaRequired(
+                    "Fastweb requires reCAPTCHA; automatic login stopped"
+                )
             raise InvalidAuth(payload.get("errorMessage") or "Fastweb login failed")
 
         for enabled, url in ((payload.get("rm"), SET_RM_URL), (payload.get("mt"), SET_MT_URL)):
@@ -398,6 +495,17 @@ class FastwebClient:
             raise FastwebError(payload.get("errorMessage") or "Fastweb rejected the request")
         return payload
 
+    def _submit_form(
+        self, page_url: str, ajax_url: str, fields: dict[str, str], timeout: float
+    ) -> dict:
+        """Post a settings form, reloading the page token once if the session expired."""
+        try:
+            return self._post_json(ajax_url, page_url, fields, timeout)
+        except AuthenticationRequired:
+            self._form(page_url, timeout)
+            fields["securityToken"] = self._token or ""
+            return self._post_json(ajax_url, page_url, fields, timeout)
+
     def _dashboard_action(
         self, action: str, extra: dict[str, str] | None = None, timeout: float = 15
     ) -> dict:
@@ -450,6 +558,7 @@ class FastwebClient:
                 "plug_status": status,
                 "plug_online": status.upper() == "ONLINE",
                 "notifications_unread": max(0, unread),
+                "notifications": _parse_notifications(notify_data.get("notifications")),
             }
 
     def get_latest(self, timeout: float = 15) -> list[dict]:
@@ -457,6 +566,25 @@ class FastwebClient:
         with self._lock:
             payload = self._dashboard_action("consumptionLatest", timeout=timeout)
             return _parse_latest(payload.get("data") or {})
+
+    def _history(self, period: str, timeout: float) -> dict:
+        payload = self._dashboard_action(
+            "consumptionOwnMedium", {"period": period, "includePrevious": "1"}, timeout
+        )
+        return _parse_history(payload.get("data") or {})
+
+    def get_history(self, timeout: float = 15) -> dict:
+        """Return the last seven days, with the last thirty under ``month``."""
+        with self._lock:
+            history = self._history(HISTORY_WEEK, timeout)
+            try:
+                history["month"] = self._history(HISTORY_MONTH, timeout)
+            except InvalidAuth:
+                raise
+            except FastwebError:
+                # The weekly data is still useful when the monthly view fails.
+                history["month"] = None
+            return history
 
     def _led_settings(self, fields: dict[str, str]) -> dict[str, bool]:
         return {key: fields.get(field) == "Y" for key, field in LED_FIELDS.items()}
@@ -499,7 +627,7 @@ class FastwebClient:
             fields.update(
                 {field: "Y" if current[key] else "N" for key, field in LED_FIELDS.items()}
             )
-            self._post_json(LED_AJAX_URL, LED_SETTINGS_URL, fields, timeout)
+            self._submit_form(LED_SETTINGS_URL, LED_AJAX_URL, fields, timeout)
             return current
 
     def update_notification_settings(self, changes: dict, timeout: float = 15) -> dict:
@@ -529,7 +657,9 @@ class FastwebClient:
                 start = current["holiday_from"]
                 end = current["holiday_to"]
                 if not start or not end or date.fromisoformat(start) > date.fromisoformat(end):
-                    raise FastwebError("set a valid holiday date range before enabling holiday mode")
+                    raise FastwebError(
+                        "set a valid holiday date range before enabling holiday mode"
+                    )
 
             enabled = [current[key] for key in NOTIFY_BOOL_FIELDS]
             fields = {
@@ -544,75 +674,6 @@ class FastwebClient:
                 "holiday_mode_from": _portal_date(current["holiday_from"]),
                 "holiday_mode_to": _portal_date(current["holiday_to"]),
             }
-            self._post_json(NOTIFY_AJAX_URL, NOTIFY_SETTINGS_URL, fields, timeout)
+            self._submit_form(NOTIFY_SETTINGS_URL, NOTIFY_AJAX_URL, fields, timeout)
             return current
 
-
-def self_check() -> None:
-    token = "a" * 64
-    assert extract_security_token(f'<input value="{token}" name="securityToken">') == token
-    assert extract_security_token(f'<script>securityToken="{token}";</script>') == token
-    fields = extract_form_fields(
-        f'<form id="request_form"><input name="securityToken" value="{token}">'
-        '<input name="notify_led_all" value="Y"></form>',
-        "request_form",
-    )
-    assert fields["notify_led_all"] == "Y"
-    body, content_type = encode_multipart({"action": "consumptionRealtime"})
-    assert b"consumptionRealtime" in body and "boundary=" in content_type
-    assert parse_cookie_header("a=1; b=2") == {"a": "1", "b": "2"}
-    assert parse_cookie_header("Cookie: a=1; b=2") == {"a": "1", "b": "2"}
-    assert _portal_date("2026-07-13") == "13/07/2026"
-    assert _iso_date("13/07/2026") == "2026-07-13"
-    latest = _parse_latest(
-        {
-            "latest": {
-                "2026-07-13T10:01:00+02:00": {"power": 200},
-                "2026-07-13T10:00:00+02:00": {"power": 100},
-            }
-        }
-    )
-    assert [sample["power"] for sample in latest] == [100.0, 200.0]
-
-    # An expired persisted cookie must not poison the replacement session.
-    client = FastwebClient("user", "password", "FWB_RM=old; PHPSESSID=old")
-    visited: list[str] = []
-
-    def fake_page(url: str, timeout: float) -> str:
-        visited.append(url)
-        if len(visited) < 3:
-            raise AuthenticationRequired("session expired")
-        return "authenticated"
-
-    def fake_login(timeout: float) -> None:
-        assert not list(client.jar), "Expired cookies leaked into the new login"
-        client.jar.set_cookie(_make_cookie("FWB_RM", "fresh"))
-
-    client._load_page = fake_page
-    client._login = fake_login
-    assert client._authenticated_page(DASHBOARD_URL, 2) == "authenticated"
-    assert visited == [
-        DASHBOARD_URL,
-        DASHBOARD_URL,
-        DASHBOARD_URL.replace("https://fastweb.it/", "https://www.fastweb.it/"),
-    ]
-    assert client.cookie_header == "FWB_RM=fresh"
-
-    class _RedirectLoop:
-        def open(self, request: Request, timeout: float):
-            raise HTTPError(
-                "https://fastweb.it/myfastweb/accesso/profile/",
-                302,
-                "redirect loop",
-                {"Location": "/myfastweb/accesso/login/"},
-                None,
-            )
-
-    loop_client = FastwebClient()
-    loop_client._opener = _RedirectLoop()
-    try:
-        loop_client._open(Request(DASHBOARD_URL), 2)
-    except AuthenticationRequired:
-        pass
-    else:
-        raise AssertionError("Login redirect loops must trigger reauthentication")

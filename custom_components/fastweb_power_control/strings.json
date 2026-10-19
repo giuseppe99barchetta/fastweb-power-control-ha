@@ -1,12 +1,16 @@
 {
   "config": {
     "abort": {
+      "already_configured": "This MyFastweb account is already configured.",
       "reauth_successful": "Authentication updated successfully.",
-      "single_instance_allowed": "Only one configuration is allowed."
+      "reconfigure_successful": "Configuration updated successfully.",
+      "single_instance_allowed": "Only one configuration is allowed.",
+      "wrong_account": "These credentials belong to a different MyFastweb account."
     },
     "error": {
       "cannot_connect": "Cannot connect to Fastweb.",
-      "invalid_auth": "Fastweb login failed. Check the credentials or complete any reCAPTCHA on the website."
+      "invalid_auth": "Fastweb login failed. Check the credentials or complete any reCAPTCHA on the website.",
+      "recaptcha_required": "Fastweb requires a reCAPTCHA. Sign in from a browser and paste the session cookie."
     },
     "step": {
       "reauth_confirm": {
@@ -17,6 +21,15 @@
         },
         "description": "Enter your MyFastweb credentials again. If automatic login is blocked, paste a session cookie from a browser login.",
         "title": "Reconnect Fastweb Power Control"
+      },
+      "reconfigure": {
+        "data": {
+          "cookie": "Session cookie (optional)",
+          "password": "Password",
+          "username": "Username"
+        },
+        "description": "Change the MyFastweb credentials or the session cookie for this account.",
+        "title": "Update Fastweb Power Control credentials"
       },
       "user": {
         "data": {
@@ -32,35 +45,149 @@
   },
   "entity": {
     "binary_sensor": {
-      "connectivity": {"name": "Plug connectivity"},
-      "power_limit_warning": {"name": "Near power limit"},
-      "stale_data": {"name": "Stale consumption data"}
+      "connectivity": {
+        "name": "Plug connectivity"
+      },
+      "power_limit_warning": {
+        "name": "Near power limit"
+      },
+      "stale_data": {
+        "name": "Stale consumption data"
+      }
     },
     "date": {
-      "holiday_from": {"name": "Holiday start"},
-      "holiday_to": {"name": "Holiday end"}
+      "holiday_from": {
+        "name": "Holiday start"
+      },
+      "holiday_to": {
+        "name": "Holiday end"
+      }
+    },
+    "event": {
+      "portal_notification": {
+        "name": "Portal notification",
+        "state_attributes": {
+          "event_type": {
+            "state": {
+              "contracted_power_limit_exceeded": "Contracted power exceeded",
+              "holiday_mode": "Holiday mode consumption",
+              "monthly_energy_budget": "Monthly budget exceeded",
+              "other": "Other notification",
+              "provider_disconnection": "Supply interruption"
+            }
+          }
+        }
+      }
     },
     "number": {
-      "monthly_threshold": {"name": "Monthly energy threshold"}
+      "monthly_threshold": {
+        "name": "Monthly energy threshold"
+      }
     },
     "sensor": {
-      "api_latency": {"name": "API response time"},
-      "contracted_power": {"name": "Contracted power"},
-      "energy_total": {"name": "Cumulative consumption"},
-      "load_percentage": {"name": "Contracted power usage"},
-      "notifications_unread": {"name": "Unread notifications"},
-      "power": {"name": "Current consumption"},
-      "power_headroom": {"name": "Available power"}
+      "api_latency": {
+        "name": "API response time"
+      },
+      "appliance_air_conditioner": {
+        "name": "Air conditioning (7 days)"
+      },
+      "appliance_consumer_electronics_illumination": {
+        "name": "Electronics and lighting (7 days)"
+      },
+      "appliance_dishwasher": {
+        "name": "Dishwasher (7 days)"
+      },
+      "appliance_fridge": {
+        "name": "Fridge (7 days)"
+      },
+      "appliance_other": {
+        "name": "Other consumption (7 days)"
+      },
+      "appliance_oven": {
+        "name": "Oven (7 days)"
+      },
+      "appliance_small_appliances": {
+        "name": "Small appliances (7 days)"
+      },
+      "appliance_standby": {
+        "name": "Standby (7 days)"
+      },
+      "appliance_washing_machine": {
+        "name": "Washing machine (7 days)"
+      },
+      "contracted_power": {
+        "name": "Contracted power"
+      },
+      "energy_last_30_days": {
+        "name": "Consumption last 30 days"
+      },
+      "energy_last_7_days": {
+        "name": "Consumption last 7 days"
+      },
+      "energy_last_day": {
+        "name": "Consumption last day"
+      },
+      "energy_total": {
+        "name": "Cumulative consumption"
+      },
+      "last_update": {
+        "name": "Last update"
+      },
+      "load_percentage": {
+        "name": "Contracted power usage"
+      },
+      "notifications_unread": {
+        "name": "Unread notifications"
+      },
+      "peak_power_today": {
+        "name": "Peak power today"
+      },
+      "power": {
+        "name": "Current consumption"
+      },
+      "power_headroom": {
+        "name": "Available power"
+      }
     },
     "switch": {
-      "buzzer": {"name": "Power limit buzzer"},
-      "holiday_mode": {"name": "Holiday mode warning"},
-      "led_all": {"name": "All LEDs"},
-      "led_internet": {"name": "Internet LED"},
-      "led_meter": {"name": "Meter data LED"},
-      "monthly_budget": {"name": "Monthly budget warning"},
-      "power_limit": {"name": "Contracted power warning"},
-      "provider_disconnection": {"name": "Provider disconnection warning"}
+      "buzzer": {
+        "name": "Power limit buzzer"
+      },
+      "holiday_mode": {
+        "name": "Holiday mode warning"
+      },
+      "led_all": {
+        "name": "All LEDs"
+      },
+      "led_internet": {
+        "name": "Internet LED"
+      },
+      "led_meter": {
+        "name": "Meter data LED"
+      },
+      "monthly_budget": {
+        "name": "Monthly budget warning"
+      },
+      "power_limit": {
+        "name": "Contracted power warning"
+      },
+      "provider_disconnection": {
+        "name": "Provider disconnection warning"
+      }
+    }
+  },
+  "exceptions": {
+    "invalid_holiday_period": {
+      "message": "The holiday start date must not be after the end date."
+    },
+    "not_loaded": {
+      "message": "Fastweb Power Control is not loaded."
+    }
+  },
+  "issues": {
+    "recaptcha_required": {
+      "description": "Fastweb blocked automatic sign-in with a reCAPTCHA. Sign in to MyFastweb from a browser, copy the `FWB_RM` cookie and enter it in the **Session cookie** field of the reauthentication flow. The integration never tries to bypass the reCAPTCHA.",
+      "title": "Fastweb requires a reCAPTCHA"
     }
   },
   "options": {
@@ -71,6 +198,26 @@
           "warning_threshold": "Near-limit warning threshold (%)"
         }
       }
+    }
+  },
+  "services": {
+    "set_holiday_period": {
+      "description": "Writes both holiday dates and the holiday-mode warning in a single request.",
+      "fields": {
+        "enable": {
+          "description": "Turn the holiday-mode warning on (default) or off.",
+          "name": "Enable warning"
+        },
+        "end": {
+          "description": "Last day of the holiday period.",
+          "name": "End"
+        },
+        "start": {
+          "description": "First day of the holiday period.",
+          "name": "Start"
+        }
+      },
+      "name": "Set holiday period"
     }
   },
   "title": "Fastweb Power Control"

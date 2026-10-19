@@ -1,12 +1,16 @@
 {
   "config": {
     "abort": {
+      "already_configured": "Questo account MyFastweb è già configurato.",
       "reauth_successful": "Autenticazione aggiornata correttamente.",
-      "single_instance_allowed": "È consentita una sola configurazione."
+      "reconfigure_successful": "Configurazione aggiornata correttamente.",
+      "single_instance_allowed": "È consentita una sola configurazione.",
+      "wrong_account": "Queste credenziali appartengono a un altro account MyFastweb."
     },
     "error": {
       "cannot_connect": "Impossibile collegarsi a Fastweb.",
-      "invalid_auth": "Accesso Fastweb fallito. Controlla le credenziali o completa l'eventuale reCAPTCHA sul sito."
+      "invalid_auth": "Accesso Fastweb fallito. Controlla le credenziali o completa l'eventuale reCAPTCHA sul sito.",
+      "recaptcha_required": "Fastweb richiede un reCAPTCHA. Accedi dal browser e incolla il cookie di sessione."
     },
     "step": {
       "reauth_confirm": {
@@ -17,6 +21,15 @@
         },
         "description": "Inserisci nuovamente le credenziali MyFastweb. Se il login automatico è bloccato, incolla un cookie di sessione ottenuto dal browser.",
         "title": "Ricollega Fastweb Power Control"
+      },
+      "reconfigure": {
+        "data": {
+          "cookie": "Cookie di sessione (facoltativo)",
+          "password": "Password",
+          "username": "Username"
+        },
+        "description": "Modifica le credenziali MyFastweb o il cookie di sessione di questo account.",
+        "title": "Aggiorna le credenziali di Fastweb Power Control"
       },
       "user": {
         "data": {
@@ -32,35 +45,149 @@
   },
   "entity": {
     "binary_sensor": {
-      "connectivity": {"name": "Connessione Plug"},
-      "power_limit_warning": {"name": "Vicino al limite di potenza"},
-      "stale_data": {"name": "Dati di consumo non aggiornati"}
+      "connectivity": {
+        "name": "Connessione Plug"
+      },
+      "power_limit_warning": {
+        "name": "Vicino al limite di potenza"
+      },
+      "stale_data": {
+        "name": "Dati di consumo non aggiornati"
+      }
     },
     "date": {
-      "holiday_from": {"name": "Inizio vacanza"},
-      "holiday_to": {"name": "Fine vacanza"}
+      "holiday_from": {
+        "name": "Inizio vacanza"
+      },
+      "holiday_to": {
+        "name": "Fine vacanza"
+      }
+    },
+    "event": {
+      "portal_notification": {
+        "name": "Notifica del portale",
+        "state_attributes": {
+          "event_type": {
+            "state": {
+              "contracted_power_limit_exceeded": "Potenza contrattuale superata",
+              "holiday_mode": "Consumo in modalità vacanza",
+              "monthly_energy_budget": "Budget mensile superato",
+              "other": "Altra notifica",
+              "provider_disconnection": "Interruzione di fornitura"
+            }
+          }
+        }
+      }
     },
     "number": {
-      "monthly_threshold": {"name": "Soglia energia mensile"}
+      "monthly_threshold": {
+        "name": "Soglia energia mensile"
+      }
     },
     "sensor": {
-      "api_latency": {"name": "Tempo di risposta API"},
-      "contracted_power": {"name": "Potenza contrattuale"},
-      "energy_total": {"name": "Consumo cumulativo"},
-      "load_percentage": {"name": "Utilizzo potenza contrattuale"},
-      "notifications_unread": {"name": "Notifiche non lette"},
-      "power": {"name": "Consumo istantaneo"},
-      "power_headroom": {"name": "Potenza disponibile"}
+      "api_latency": {
+        "name": "Tempo di risposta API"
+      },
+      "appliance_air_conditioner": {
+        "name": "Climatizzazione (7 giorni)"
+      },
+      "appliance_consumer_electronics_illumination": {
+        "name": "Elettronica e illuminazione (7 giorni)"
+      },
+      "appliance_dishwasher": {
+        "name": "Lavastoviglie (7 giorni)"
+      },
+      "appliance_fridge": {
+        "name": "Frigorifero (7 giorni)"
+      },
+      "appliance_other": {
+        "name": "Altri consumi (7 giorni)"
+      },
+      "appliance_oven": {
+        "name": "Forno (7 giorni)"
+      },
+      "appliance_small_appliances": {
+        "name": "Piccoli elettrodomestici (7 giorni)"
+      },
+      "appliance_standby": {
+        "name": "Standby (7 giorni)"
+      },
+      "appliance_washing_machine": {
+        "name": "Lavatrice (7 giorni)"
+      },
+      "contracted_power": {
+        "name": "Potenza contrattuale"
+      },
+      "energy_last_30_days": {
+        "name": "Consumo ultimi 30 giorni"
+      },
+      "energy_last_7_days": {
+        "name": "Consumo ultimi 7 giorni"
+      },
+      "energy_last_day": {
+        "name": "Consumo ultimo giorno"
+      },
+      "energy_total": {
+        "name": "Consumo cumulativo"
+      },
+      "last_update": {
+        "name": "Ultimo aggiornamento"
+      },
+      "load_percentage": {
+        "name": "Utilizzo potenza contrattuale"
+      },
+      "notifications_unread": {
+        "name": "Notifiche non lette"
+      },
+      "peak_power_today": {
+        "name": "Picco di potenza oggi"
+      },
+      "power": {
+        "name": "Consumo istantaneo"
+      },
+      "power_headroom": {
+        "name": "Potenza disponibile"
+      }
     },
     "switch": {
-      "buzzer": {"name": "Buzzer limite potenza"},
-      "holiday_mode": {"name": "Avviso modalità vacanza"},
-      "led_all": {"name": "Tutti i LED"},
-      "led_internet": {"name": "LED connessione Internet"},
-      "led_meter": {"name": "LED dati contatore"},
-      "monthly_budget": {"name": "Avviso budget mensile"},
-      "power_limit": {"name": "Avviso superamento potenza"},
-      "provider_disconnection": {"name": "Avviso distacco fornitura"}
+      "buzzer": {
+        "name": "Buzzer limite potenza"
+      },
+      "holiday_mode": {
+        "name": "Avviso modalità vacanza"
+      },
+      "led_all": {
+        "name": "Tutti i LED"
+      },
+      "led_internet": {
+        "name": "LED connessione Internet"
+      },
+      "led_meter": {
+        "name": "LED dati contatore"
+      },
+      "monthly_budget": {
+        "name": "Avviso budget mensile"
+      },
+      "power_limit": {
+        "name": "Avviso superamento potenza"
+      },
+      "provider_disconnection": {
+        "name": "Avviso distacco fornitura"
+      }
+    }
+  },
+  "exceptions": {
+    "invalid_holiday_period": {
+      "message": "La data di inizio vacanza non può essere successiva a quella di fine."
+    },
+    "not_loaded": {
+      "message": "Fastweb Power Control non è caricata."
+    }
+  },
+  "issues": {
+    "recaptcha_required": {
+      "description": "Fastweb ha bloccato il login automatico con un reCAPTCHA. Accedi a MyFastweb dal browser, copia il cookie `FWB_RM` e inseriscilo nel campo **Cookie di sessione** del flusso di riautenticazione. L’integrazione non tenta mai di aggirare il reCAPTCHA.",
+      "title": "Fastweb richiede un reCAPTCHA"
     }
   },
   "options": {
@@ -71,6 +198,26 @@
           "warning_threshold": "Soglia avviso vicino al limite (%)"
         }
       }
+    }
+  },
+  "services": {
+    "set_holiday_period": {
+      "description": "Scrive entrambe le date di vacanza e l’avviso modalità vacanza in un’unica richiesta.",
+      "fields": {
+        "enable": {
+          "description": "Attiva (predefinito) o disattiva l’avviso modalità vacanza.",
+          "name": "Attiva avviso"
+        },
+        "end": {
+          "description": "Ultimo giorno del periodo di vacanza.",
+          "name": "Fine"
+        },
+        "start": {
+          "description": "Primo giorno del periodo di vacanza.",
+          "name": "Inizio"
+        }
+      },
+      "name": "Imposta periodo vacanza"
     }
   },
   "title": "Fastweb Power Control"

@@ -6,8 +6,8 @@ from homeassistant.config_entries import ConfigEntry
 from homeassistant.helpers.device_registry import DeviceInfo
 from homeassistant.helpers.update_coordinator import CoordinatorEntity
 
-from . import FastwebCoordinator
 from .const import DOMAIN
+from .coordinator import FastwebCoordinator
 
 
 class FastwebEntity(CoordinatorEntity[FastwebCoordinator]):

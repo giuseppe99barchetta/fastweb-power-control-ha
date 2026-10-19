@@ -1,0 +1,16 @@
+set_holiday_period:
+  fields:
+    start:
+      required: true
+      example: "2026-08-01"
+      selector:
+        date:
+    end:
+      required: true
+      example: "2026-08-21"
+      selector:
+        date:
+    enable:
+      default: true
+      selector:
+        boolean:

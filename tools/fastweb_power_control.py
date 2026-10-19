@@ -7,10 +7,13 @@ import argparse
 import importlib.util
 import json
 import os
-import sys
 from pathlib import Path
+import sys
 
-_API_PATH = Path(__file__).parent / "custom_components/fastweb_power_control/api.py"
+_API_PATH = (
+    Path(__file__).resolve().parent.parent
+    / "custom_components/fastweb_power_control/api.py"
+)
 _SPEC = importlib.util.spec_from_file_location("fastweb_power_control_api", _API_PATH)
 if _SPEC is None or _SPEC.loader is None:
     raise RuntimeError("Fastweb client not found")
@@ -18,7 +21,6 @@ _API = importlib.util.module_from_spec(_SPEC)
 _SPEC.loader.exec_module(_API)
 FastwebClient = _API.FastwebClient
 FastwebError = _API.FastwebError
-self_check = _API.self_check
 
 
 def read_cookie(path: str | None) -> str:
@@ -66,13 +68,8 @@ def main() -> int:
     parser.add_argument("--cookie-file")
     parser.add_argument("--credentials-file")
     parser.add_argument("--timeout", type=float, default=15)
-    parser.add_argument("--self-test", action="store_true")
     args = parser.parse_args()
     try:
-        if args.self_test:
-            self_check()
-            print("ok")
-            return 0
         username, password = read_credentials(args.credentials_file)
         client = FastwebClient(username, password, read_cookie(args.cookie_file))
         payload = client.get_realtime(args.timeout)

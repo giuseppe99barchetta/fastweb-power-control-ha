@@ -10,20 +10,19 @@ from homeassistant.core import HomeAssistant
 from homeassistant.helpers.entity import EntityCategory
 from homeassistant.helpers.entity_platform import AddConfigEntryEntitiesCallback
 
-from .const import (
-    CONF_WARNING_THRESHOLD,
-    DEFAULT_WARNING_THRESHOLD,
-    DOMAIN,
-)
+from .const import CONF_WARNING_THRESHOLD, DEFAULT_WARNING_THRESHOLD
+from .coordinator import FastwebConfigEntry
 from .entity import FastwebEntity
+
+PARALLEL_UPDATES = 0
 
 
 async def async_setup_entry(
     hass: HomeAssistant,
-    entry: ConfigEntry,
+    entry: FastwebConfigEntry,
     async_add_entities: AddConfigEntryEntitiesCallback,
 ) -> None:
-    coordinator = hass.data[DOMAIN][entry.entry_id]
+    coordinator = entry.runtime_data
     async_add_entities(
         [
             FastwebConnectivitySensor(coordinator, entry),

@@ -3,7 +3,7 @@ command_line:
       name: Fastweb Power Control
       unique_id: fastweb_power_control
       command: >-
-        python3 /config/fastweb_power_control.py
+        python3 /config/tools/fastweb_power_control.py
         --cookie-file /config/fastweb_power_control.cookie
         --credentials-file /config/fastweb_power_control.credentials
       command_timeout: 30

@@ -4,12 +4,10 @@ from __future__ import annotations
 
 import logging
 
-import voluptuous as vol
-
 from homeassistant import config_entries
+from homeassistant.config_entries import ConfigFlowResult
 from homeassistant.const import CONF_PASSWORD, CONF_USERNAME
 from homeassistant.core import HomeAssistant, callback
-from homeassistant.config_entries import ConfigFlowResult
 from homeassistant.helpers.selector import (
     NumberSelector,
     NumberSelectorConfig,
@@ -18,8 +16,9 @@ from homeassistant.helpers.selector import (
     TextSelectorConfig,
     TextSelectorType,
 )
+import voluptuous as vol
 
-from .api import FastwebClient, FastwebError, InvalidAuth
+from .api import FastwebClient, FastwebError, InvalidAuth, RecaptchaRequired
 from .const import (
     CONF_COOKIE,
     CONF_SCAN_INTERVAL,
@@ -39,6 +38,28 @@ async def _validate(hass: HomeAssistant, data: dict) -> str:
     )
     await hass.async_add_executor_job(client.get_realtime)
     return client.cookie_header
+
+
+async def _async_try_validate(
+    hass: HomeAssistant, data: dict, step: str, errors: dict[str, str]
+) -> str | None:
+    """Validate and fill ``errors``; return the cookies on success."""
+    try:
+        return await _validate(hass, data)
+    except RecaptchaRequired as error:
+        LOGGER.warning("Fastweb requires reCAPTCHA during %s: %s", step, error)
+        errors["base"] = "recaptcha_required"
+    except InvalidAuth as error:
+        LOGGER.warning("Fastweb authentication failed during %s: %s", step, error)
+        errors["base"] = "invalid_auth"
+    except FastwebError as error:
+        LOGGER.warning("Unable to connect to Fastweb during %s: %s", step, error)
+        errors["base"] = "cannot_connect"
+    return None
+
+
+def _account_id(username: str) -> str:
+    return username.strip().lower()
 
 
 def _credentials_schema(username: str = "", include_interval: bool = False) -> vol.Schema:
@@ -75,15 +96,10 @@ class FastwebPowerControlConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
     async def async_step_user(self, user_input: dict | None = None) -> ConfigFlowResult:
         errors: dict[str, str] = {}
         if user_input is not None:
-            try:
-                cookie = await _validate(self.hass, user_input)
-            except InvalidAuth as error:
-                LOGGER.warning("Fastweb authentication failed during setup: %s", error)
-                errors["base"] = "invalid_auth"
-            except FastwebError as error:
-                LOGGER.warning("Unable to connect to Fastweb during setup: %s", error)
-                errors["base"] = "cannot_connect"
-            else:
+            await self.async_set_unique_id(_account_id(user_input[CONF_USERNAME]))
+            self._abort_if_unique_id_configured()
+            cookie = await _async_try_validate(self.hass, user_input, "setup", errors)
+            if not errors:
                 data = {
                     key: value
                     for key, value in user_input.items()
@@ -98,6 +114,26 @@ class FastwebPowerControlConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
             errors=errors,
         )
 
+    async def _async_update_credentials(
+        self,
+        entry: config_entries.ConfigEntry,
+        user_input: dict,
+        step: str,
+        errors: dict[str, str],
+    ) -> ConfigFlowResult | None:
+        """Shared reauth/reconfigure logic: same account, new credentials."""
+        await self.async_set_unique_id(_account_id(user_input[CONF_USERNAME]))
+        self._abort_if_unique_id_mismatch(reason="wrong_account")
+        updated = {**entry.data, **user_input}
+        cookie = await _async_try_validate(self.hass, updated, step, errors)
+        if errors:
+            return None
+        if cookie:
+            updated[CONF_COOKIE] = cookie
+        elif CONF_COOKIE in user_input:
+            updated.pop(CONF_COOKIE, None)
+        return self.async_update_reload_and_abort(entry, data_updates=updated)
+
     async def async_step_reauth(self, entry_data: dict) -> ConfigFlowResult:
         return await self.async_step_reauth_confirm()
 
@@ -106,28 +142,31 @@ class FastwebPowerControlConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
     ) -> ConfigFlowResult:
         entry = self._get_reauth_entry()
         errors: dict[str, str] = {}
-        if user_input is not None:
-            updated = {**entry.data, **user_input}
-            try:
-                cookie = await _validate(self.hass, updated)
-            except InvalidAuth as error:
-                LOGGER.warning(
-                    "Fastweb authentication failed during reauthentication: %s", error
-                )
-                errors["base"] = "invalid_auth"
-            except FastwebError as error:
-                LOGGER.warning(
-                    "Unable to connect to Fastweb during reauthentication: %s", error
-                )
-                errors["base"] = "cannot_connect"
-            else:
-                if cookie:
-                    updated[CONF_COOKIE] = cookie
-                elif CONF_COOKIE in user_input:
-                    updated.pop(CONF_COOKIE, None)
-                return self.async_update_reload_and_abort(entry, data_updates=updated)
+        if user_input is not None and (
+            result := await self._async_update_credentials(
+                entry, user_input, "reauthentication", errors
+            )
+        ):
+            return result
         return self.async_show_form(
             step_id="reauth_confirm",
+            data_schema=_credentials_schema(entry.data[CONF_USERNAME]),
+            errors=errors,
+        )
+
+    async def async_step_reconfigure(
+        self, user_input: dict | None = None
+    ) -> ConfigFlowResult:
+        entry = self._get_reconfigure_entry()
+        errors: dict[str, str] = {}
+        if user_input is not None and (
+            result := await self._async_update_credentials(
+                entry, user_input, "reconfiguration", errors
+            )
+        ):
+            return result
+        return self.async_show_form(
+            step_id="reconfigure",
             data_schema=_credentials_schema(entry.data[CONF_USERNAME]),
             errors=errors,
         )

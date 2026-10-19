@@ -1,0 +1,73 @@
+blueprint:
+  name: Fastweb Power Control – load shedding near the power limit
+  description: >-
+    Turns off selected loads when the contracted power usage stays above a
+    threshold, before the meter trips. Optionally sends a notification.
+  domain: automation
+  source_url: https://github.com/giuseppe99barchetta/fastweb-power-control-ha/blob/main/blueprints/automation/fastweb_power_control/power_limit_load_shedding.yaml
+  input:
+    load_sensor:
+      name: Contracted power usage
+      description: The "Contracted power usage" (%) sensor of Fastweb Power Control.
+      selector:
+        entity:
+          filter:
+            - integration: fastweb_power_control
+              domain: sensor
+    threshold:
+      name: Threshold
+      default: 95
+      selector:
+        number:
+          min: 50
+          max: 120
+          unit_of_measurement: "%"
+    duration:
+      name: Duration above the threshold
+      default:
+        seconds: 30
+      selector:
+        duration:
+    loads:
+      name: Loads to turn off
+      description: Switches or plugs to turn off, for example an oven or a heater.
+      selector:
+        target:
+          entity:
+            - domain:
+                - switch
+                - light
+                - climate
+                - water_heater
+    notify_action:
+      name: Notify action (optional)
+      description: For example notify.mobile_app_my_phone. Leave empty for no notification.
+      default: ""
+      selector:
+        text:
+
+mode: single
+max_exceeded: silent
+
+variables:
+  notify_action: !input notify_action
+  threshold: !input threshold
+
+triggers:
+  - trigger: numeric_state
+    entity_id: !input load_sensor
+    above: !input threshold
+    for: !input duration
+
+actions:
+  - action: homeassistant.turn_off
+    target: !input loads
+  - if:
+      - condition: template
+        value_template: "{{ notify_action | length > 0 }}"
+    then:
+      - action: "{{ notify_action }}"
+        data:
+          title: Fastweb Power Control
+          message: >-
+            Power usage above {{ threshold }}%: selected loads have been turned off.

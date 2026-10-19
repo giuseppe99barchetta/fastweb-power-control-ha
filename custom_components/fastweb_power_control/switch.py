@@ -3,13 +3,14 @@
 from __future__ import annotations
 
 from homeassistant.components.switch import SwitchEntity
-from homeassistant.config_entries import ConfigEntry
 from homeassistant.core import HomeAssistant
 from homeassistant.helpers.entity import EntityCategory
 from homeassistant.helpers.entity_platform import AddConfigEntryEntitiesCallback
 
-from .const import DOMAIN
+from .coordinator import FastwebConfigEntry
 from .entity import FastwebSettingEntity
+
+PARALLEL_UPDATES = 1
 
 SWITCHES = (
     ("led", "led_all"),
@@ -25,10 +26,10 @@ SWITCHES = (
 
 async def async_setup_entry(
     hass: HomeAssistant,
-    entry: ConfigEntry,
+    entry: FastwebConfigEntry,
     async_add_entities: AddConfigEntryEntitiesCallback,
 ) -> None:
-    coordinator = hass.data[DOMAIN][entry.entry_id]
+    coordinator = entry.runtime_data
     async_add_entities(
         [FastwebSettingSwitch(coordinator, entry, group, key) for group, key in SWITCHES]
     )
