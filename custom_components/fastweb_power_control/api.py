@@ -10,7 +10,7 @@ import uuid
 from html.parser import HTMLParser
 from http.cookiejar import Cookie, CookieJar
 from urllib.error import HTTPError, URLError
-from urllib.parse import urlencode, urljoin
+from urllib.parse import urlencode, urljoin, urlsplit
 from urllib.request import HTTPCookieProcessor, Request, build_opener
 
 DASHBOARD_URL = "https://fastweb.it/myfastweb/abbonamento/consumi-power-control/"
@@ -236,6 +236,21 @@ class FastwebClient:
         except HTTPError as error:
             if error.code in {401, 403}:
                 raise AuthenticationRequired("Fastweb session expired") from error
+            if error.code in {301, 302, 303, 307, 308}:
+                location = error.headers.get("Location", "")
+                source = urlsplit(error.geturl()).path
+                destination = urlsplit(urljoin(error.geturl(), location)).path if location else ""
+                if any(
+                    marker in path
+                    for path in (source, destination)
+                    for marker in ("/accesso/", "/contenuti-riservati/")
+                ):
+                    raise AuthenticationRequired("Fastweb redirected to login") from error
+                original = urlsplit(request.full_url).path
+                raise FastwebError(
+                    f"Fastweb returned HTTP {error.code} while requesting "
+                    f"{request.get_method()} {original} (redirect {source} to {destination})"
+                ) from error
             raise FastwebError(f"Fastweb returned HTTP {error.code}") from error
         except URLError as error:
             raise FastwebError(f"Fastweb connection failed: {error.reason}") from error
@@ -582,3 +597,22 @@ def self_check() -> None:
         DASHBOARD_URL.replace("https://fastweb.it/", "https://www.fastweb.it/"),
     ]
     assert client.cookie_header == "FWB_RM=fresh"
+
+    class _RedirectLoop:
+        def open(self, request: Request, timeout: float):
+            raise HTTPError(
+                "https://fastweb.it/myfastweb/accesso/profile/",
+                302,
+                "redirect loop",
+                {"Location": "/myfastweb/accesso/login/"},
+                None,
+            )
+
+    loop_client = FastwebClient()
+    loop_client._opener = _RedirectLoop()
+    try:
+        loop_client._open(Request(DASHBOARD_URL), 2)
+    except AuthenticationRequired:
+        pass
+    else:
+        raise AssertionError("Login redirect loops must trigger reauthentication")
