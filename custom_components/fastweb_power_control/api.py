@@ -253,6 +253,11 @@ class FastwebClient:
             return self._load_page(url, timeout)
         except AuthenticationRequired:
             self._token = None
+            # Stale portal cookies can override the session established by a
+            # successful login and trigger an endless /accesso/ redirect.
+            # Start reauthentication with a fresh cookie jar; the opener keeps
+            # using this same jar and collects the new Set-Cookie headers.
+            self.jar.clear()
             self._login(timeout)
             try:
                 return self._load_page(url, timeout)
@@ -553,3 +558,27 @@ def self_check() -> None:
         }
     )
     assert [sample["power"] for sample in latest] == [100.0, 200.0]
+
+    # An expired persisted cookie must not poison the replacement session.
+    client = FastwebClient("user", "password", "FWB_RM=old; PHPSESSID=old")
+    visited: list[str] = []
+
+    def fake_page(url: str, timeout: float) -> str:
+        visited.append(url)
+        if len(visited) < 3:
+            raise AuthenticationRequired("session expired")
+        return "authenticated"
+
+    def fake_login(timeout: float) -> None:
+        assert not list(client.jar), "Expired cookies leaked into the new login"
+        client.jar.set_cookie(_make_cookie("FWB_RM", "fresh"))
+
+    client._load_page = fake_page
+    client._login = fake_login
+    assert client._authenticated_page(DASHBOARD_URL, 2) == "authenticated"
+    assert visited == [
+        DASHBOARD_URL,
+        DASHBOARD_URL,
+        DASHBOARD_URL.replace("https://fastweb.it/", "https://www.fastweb.it/"),
+    ]
+    assert client.cookie_header == "FWB_RM=fresh"
