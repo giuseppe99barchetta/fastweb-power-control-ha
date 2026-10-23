@@ -7,7 +7,7 @@ from unittest.mock import MagicMock
 
 from freezegun.api import FrozenDateTimeFactory
 from homeassistant.config_entries import ConfigEntryState
-from homeassistant.const import STATE_UNAVAILABLE
+from homeassistant.const import STATE_UNAVAILABLE, STATE_UNKNOWN
 from homeassistant.core import HomeAssistant
 from homeassistant.exceptions import ServiceValidationError
 from homeassistant.helpers import issue_registry as ir
@@ -80,9 +80,41 @@ async def test_history_sensors(
     fridge = hass.states.get("sensor.fastweb_power_control_fridge_7_days")
     assert fridge.state == "1.5"
     assert fridge.attributes["last_day"] == 0.6
-    # A category missing from the portal response is unavailable, not zero.
+    # A category missing from the portal response has an unknown value.
     oven = hass.states.get("sensor.fastweb_power_control_oven_7_days")
-    assert oven.state == STATE_UNAVAILABLE
+    assert oven.state == STATE_UNKNOWN
+
+
+async def test_missing_sensor_data_is_unknown(
+    hass: HomeAssistant, config_entry: MockConfigEntry, mock_client: MagicMock
+) -> None:
+    mock_client.get_status.return_value = {}
+    mock_client.get_history.return_value = {}
+    await _setup(hass, config_entry)
+
+    for entity_id in (
+        "sensor.fastweb_power_control_unread_notifications",
+        "sensor.fastweb_power_control_consumption_last_day",
+        "sensor.fastweb_power_control_consumption_last_7_days",
+        "sensor.fastweb_power_control_consumption_last_30_days",
+        "sensor.fastweb_power_control_fridge_7_days",
+    ):
+        assert hass.states.get(entity_id).state == STATE_UNKNOWN
+
+
+async def test_missing_monthly_history_is_unknown(
+    hass: HomeAssistant, config_entry: MockConfigEntry, mock_client: MagicMock
+) -> None:
+    mock_client.get_history.return_value = {
+        **mock_client.get_history.return_value,
+        "month": None,
+    }
+    await _setup(hass, config_entry)
+
+    assert hass.states.get("sensor.fastweb_power_control_consumption_last_30_days").state == (
+        STATE_UNKNOWN
+    )
+    assert hass.states.get("sensor.fastweb_power_control_consumption_last_7_days").state == "21.0"
 
 
 async def test_unique_id_migrated(hass: HomeAssistant, mock_client: MagicMock) -> None:

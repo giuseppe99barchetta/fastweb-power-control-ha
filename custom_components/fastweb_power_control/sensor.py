@@ -136,13 +136,6 @@ class FastwebDataSensor(FastwebEntity, SensorEntity):
         self.entity_description = description
 
     @property
-    def available(self) -> bool:
-        return (
-            super().available
-            and self.coordinator.data.get(self.entity_description.key) is not None
-        )
-
-    @property
     def native_value(self):
         value = self.coordinator.data.get(self.entity_description.key)
         if self.entity_description.device_class == SensorDeviceClass.TIMESTAMP and value:
@@ -291,10 +284,6 @@ class FastwebHistorySensor(FastwebEntity, SensorEntity):
         self._attr_translation_key = key
         self.key = key
         self.category = category
-
-    @property
-    def available(self) -> bool:
-        return super().available and self.native_value is not None
 
     @property
     def native_value(self) -> float | None:
