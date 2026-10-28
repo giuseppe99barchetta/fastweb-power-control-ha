@@ -6,14 +6,18 @@ from datetime import date, datetime
 from html.parser import HTMLParser
 from http.cookiejar import Cookie, CookieJar
 import json
+import logging
 import math
 from pathlib import Path
 import re
 from threading import RLock
+from time import monotonic
 from urllib.error import HTTPError, URLError
 from urllib.parse import urlencode, urljoin, urlsplit
 from urllib.request import HTTPCookieProcessor, Request, build_opener
 import uuid
+
+LOGGER = logging.getLogger(__name__)
 
 DASHBOARD_URL = "https://fastweb.it/myfastweb/abbonamento/consumi-power-control/"
 AJAX_URL = DASHBOARD_URL + "ajax/"
@@ -327,9 +331,27 @@ class FastwebClient:
     def _open(self, request: Request, timeout: float):
         if self._opener is None:
             self._opener = build_opener(HTTPCookieProcessor(self.jar))
+        started = monotonic()
         try:
-            return self._opener.open(request, timeout=timeout)
+            response = self._opener.open(request, timeout=timeout)
+            LOGGER.debug(
+                "Fastweb HTTP %s %s %s completed in %.2fs (status %s)",
+                request.get_method(),
+                urlsplit(request.full_url).hostname,
+                urlsplit(request.full_url).path,
+                monotonic() - started,
+                response.status,
+            )
+            return response
         except HTTPError as error:
+            LOGGER.warning(
+                "Fastweb HTTP %s %s %s returned %s after %.2fs",
+                request.get_method(),
+                urlsplit(request.full_url).hostname,
+                urlsplit(request.full_url).path,
+                error.code,
+                monotonic() - started,
+            )
             if error.code in {401, 403}:
                 raise AuthenticationRequired("Fastweb session expired") from error
             if error.code in {301, 302, 303, 307, 308}:
@@ -349,6 +371,14 @@ class FastwebClient:
                 ) from error
             raise FastwebError(f"Fastweb returned HTTP {error.code}") from error
         except URLError as error:
+            LOGGER.warning(
+                "Fastweb HTTP %s %s %s failed after %.2fs (%s)",
+                request.get_method(),
+                urlsplit(request.full_url).hostname,
+                urlsplit(request.full_url).path,
+                monotonic() - started,
+                type(error.reason).__name__,
+            )
             raise FastwebError(f"Fastweb connection failed: {error.reason}") from error
 
     def _load_page(self, url: str, timeout: float) -> str:
