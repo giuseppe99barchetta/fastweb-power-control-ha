@@ -8,7 +8,10 @@ import pytest
 from custom_components.fastweb_power_control.api import FastwebClient, FastwebError
 
 
-@pytest.mark.parametrize("invalid", [False, True, None, "False", "1500", -1, float("nan"), float("inf"), -float("inf")])
+@pytest.mark.parametrize(
+    "invalid",
+    [False, True, None, "False", "1500", -1, float("nan"), float("inf"), -float("inf")],
+)
 def test_realtime_rejects_invalid_power(invalid):
     client = object.__new__(FastwebClient)
     client._lock = RLock()
