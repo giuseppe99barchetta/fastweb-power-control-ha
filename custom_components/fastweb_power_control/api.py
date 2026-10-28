@@ -6,6 +6,7 @@ from datetime import date, datetime
 from html.parser import HTMLParser
 from http.cookiejar import Cookie, CookieJar
 import json
+import math
 from pathlib import Path
 import re
 from threading import RLock
@@ -536,7 +537,12 @@ class FastwebClient:
                 realtime = payload["data"]["realtime"]
             except (KeyError, TypeError) as error:
                 raise FastwebError("unexpected Fastweb realtime response") from error
-            if not isinstance(realtime, (int, float)):
+            if (
+                isinstance(realtime, bool)
+                or not isinstance(realtime, (int, float))
+                or not math.isfinite(realtime)
+                or realtime < 0
+            ):
                 raise FastwebError("invalid Fastweb realtime response")
             payload["data"].pop("realtime_sin", None)
             return payload
