@@ -10,7 +10,8 @@
     "error": {
       "cannot_connect": "Impossibile collegarsi a Fastweb.",
       "invalid_auth": "Accesso Fastweb fallito. Controlla le credenziali o completa l'eventuale reCAPTCHA sul sito.",
-      "recaptcha_required": "Fastweb richiede un reCAPTCHA. Accedi dal browser e incolla il cookie di sessione."
+      "recaptcha_required": "Fastweb richiede un reCAPTCHA. Accedi dal browser e incolla il cookie di sessione.",
+      "unknown": "Errore imprevisto. Controlla i log di Home Assistant."
     },
     "step": {
       "reauth_confirm": {

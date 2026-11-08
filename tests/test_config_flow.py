@@ -52,6 +52,8 @@ async def test_user_flow_creates_entry(hass: HomeAssistant) -> None:
         (InvalidAuth("no"), "invalid_auth"),
         (RecaptchaRequired("captcha"), "recaptcha_required"),
         (FastwebError("down"), "cannot_connect"),
+        (RuntimeError("boom"), "unknown"),
+        (UnicodeDecodeError("utf-8", b"", 0, 1, "bad"), "unknown"),
     ],
 )
 async def test_user_flow_errors(hass: HomeAssistant, error: Exception, reason: str) -> None:
@@ -132,3 +134,15 @@ async def test_options_flow(hass: HomeAssistant, config_entry: MockConfigEntry) 
         )
     assert result["type"] is FlowResultType.CREATE_ENTRY
     assert config_entry.options == {"scan_interval": 60, "warning_threshold": 80}
+
+
+def test_translations_define_every_flow_error() -> None:
+    import json
+    from pathlib import Path
+
+    folder = Path(__file__).parents[1] / "custom_components" / DOMAIN
+    strings = json.loads((folder / "strings.json").read_text(encoding="utf-8"))
+    for name in ("en", "it"):
+        translated = json.loads((folder / "translations" / f"{name}.json").read_text("utf-8"))
+        assert translated["config"]["error"].keys() == strings["config"]["error"].keys()
+    assert "unknown" in strings["config"]["error"]

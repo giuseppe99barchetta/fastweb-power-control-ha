@@ -3,7 +3,8 @@
 from __future__ import annotations
 
 from datetime import date, timedelta
-from unittest.mock import MagicMock
+import threading
+from unittest.mock import MagicMock, PropertyMock
 
 from freezegun.api import FrozenDateTimeFactory
 from homeassistant.config_entries import ConfigEntryState
@@ -314,3 +315,49 @@ async def test_diagnostics_redacts_secrets(
     assert result["config_entry"][CONF_COOKIE] == "**REDACTED**"
     assert result["runtime"]["persisted_cookie_names"] == ["FWB_RM"]
     assert "abc" not in str(result)
+
+
+async def test_unexpected_optional_error_keeps_realtime(
+    hass: HomeAssistant, config_entry: MockConfigEntry, mock_client: MagicMock
+) -> None:
+    mock_client.get_settings.side_effect = ValueError("bad threshold")
+    await _setup(hass, config_entry)
+    assert config_entry.state is ConfigEntryState.LOADED
+    assert hass.states.get(POWER).state == "1500"
+
+
+async def test_failed_optional_refresh_is_not_retried_every_cycle(
+    hass: HomeAssistant,
+    config_entry: MockConfigEntry,
+    mock_client: MagicMock,
+    freezer: FrozenDateTimeFactory,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    clock = [1000.0]
+    monkeypatch.setattr(coordinator_module, "monotonic", lambda: clock[0])
+    mock_client.get_settings.side_effect = FastwebError("settings down")
+    await _setup(hass, config_entry)
+    assert mock_client.get_settings.call_count == 1
+
+    clock[0] += 30
+    await _tick(hass, freezer, 30)
+    assert mock_client.get_settings.call_count == 1
+    clock[0] += 31
+    await _tick(hass, freezer, 30)
+    assert mock_client.get_settings.call_count == 2
+
+
+async def test_cookie_is_read_outside_the_event_loop(
+    hass: HomeAssistant, config_entry: MockConfigEntry, mock_client: MagicMock
+) -> None:
+    loop_thread = threading.get_ident()
+    readers: list[int] = []
+
+    def read_cookie() -> str:
+        readers.append(threading.get_ident())
+        return "FWB_RM=abc"
+
+    type(mock_client).cookie_header = PropertyMock(side_effect=read_cookie)
+    await _setup(hass, config_entry)
+    assert readers
+    assert loop_thread not in readers

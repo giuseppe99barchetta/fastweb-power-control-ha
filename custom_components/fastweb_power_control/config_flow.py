@@ -55,6 +55,9 @@ async def _async_try_validate(
     except FastwebError as error:
         LOGGER.warning("Unable to connect to Fastweb during %s: %s", step, error)
         errors["base"] = "cannot_connect"
+    except Exception:  # noqa: BLE001 - show a form error instead of a crashed flow
+        LOGGER.exception("Unexpected error during %s", step)
+        errors["base"] = "unknown"
     return None
 
 

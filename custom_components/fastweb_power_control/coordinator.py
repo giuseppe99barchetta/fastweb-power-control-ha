@@ -28,6 +28,8 @@ CACHE_EXPIRY_FACTOR = 3
 # Optional portal pages are skipped when realtime polling already took this long
 # (for example after a full sign-in), keeping one cycle close to the interval.
 OPTIONAL_BUDGET_SECONDS = 20
+# A failed optional refresh is retried no sooner than this, not on every cycle.
+OPTIONAL_RETRY_SECONDS = 60
 _OPTIONAL_REFRESHES = (
     # label, client method, cache attribute, timestamp attribute, interval
     ("settings", "get_settings", "settings", "_last_settings_update", SETTINGS_REFRESH_SECONDS),
@@ -90,6 +92,7 @@ class FastwebCoordinator(DataUpdateCoordinator[dict]):
         self._last_settings_update = 0.0
         self._last_status_update = 0.0
         self._last_latest_update = 0.0
+        self._last_attempt: dict[str, float] = {}
 
     @property
     def settings_age(self) -> float | None:
@@ -98,9 +101,10 @@ class FastwebCoordinator(DataUpdateCoordinator[dict]):
             return None
         return monotonic() - self._last_settings_update
 
-    def _store_authenticated_cookie(self) -> None:
+    async def _store_authenticated_cookie(self) -> None:
         """Persist the renewable Fastweb cookies without exposing their values."""
-        cookie = self.client.cookie_header
+        # Reading the cookies takes the client lock, which a request may hold.
+        cookie = await self.hass.async_add_executor_job(lambda: self.client.cookie_header)
         if not cookie or cookie == self.config_entry.data.get(CONF_COOKIE, ""):
             return
         self.hass.config_entries.async_update_entry(
@@ -122,7 +126,12 @@ class FastwebCoordinator(DataUpdateCoordinator[dict]):
             raise
         except FastwebError as error:
             LOGGER.warning("Unable to refresh Fastweb %s: %s", label, error)
-            return None
+        except Exception as error:  # noqa: BLE001 - realtime power must survive any bad page
+            LOGGER.warning(
+                "Unexpected error refreshing Fastweb %s: %s", label, type(error).__name__
+            )
+            LOGGER.debug("Fastweb %s refresh failure", label, exc_info=True)
+        return None
 
     async def _async_refresh_optional(self, started: float) -> None:
         for label, method, attr, stamp, interval in _OPTIONAL_REFRESHES:
@@ -132,6 +141,9 @@ class FastwebCoordinator(DataUpdateCoordinator[dict]):
                 return
             if getattr(self, attr) and now - getattr(self, stamp) < interval:
                 continue
+            if now - self._last_attempt.get(attr, float("-inf")) < OPTIONAL_RETRY_SECONDS:
+                continue
+            self._last_attempt[attr] = now
             if result := await self._async_optional(
                 label, getattr(self.client, method)
             ):
@@ -174,7 +186,7 @@ class FastwebCoordinator(DataUpdateCoordinator[dict]):
         if maximum_w:
             data["load_percentage"] = round(power_w / maximum_w * 100, 1)
             data["power_headroom"] = round(maximum_w - power_w)
-        self._store_authenticated_cookie()
+        await self._store_authenticated_cookie()
         return data
 
     async def async_set_settings(self, group: str, changes: dict) -> None:
@@ -195,7 +207,7 @@ class FastwebCoordinator(DataUpdateCoordinator[dict]):
 
         self.settings = {**self.settings, group: updated}
         self._last_settings_update = monotonic()
-        self._store_authenticated_cookie()
+        await self._store_authenticated_cookie()
         self.async_set_updated_data({**(self.data or {}), "settings": self.settings})
 
     async def async_set_setting(self, group: str, key: str, value: object) -> None:

@@ -10,7 +10,8 @@
     "error": {
       "cannot_connect": "Cannot connect to Fastweb.",
       "invalid_auth": "Fastweb login failed. Check the credentials or complete any reCAPTCHA on the website.",
-      "recaptcha_required": "Fastweb requires a reCAPTCHA. Sign in from a browser and paste the session cookie."
+      "recaptcha_required": "Fastweb requires a reCAPTCHA. Sign in from a browser and paste the session cookie.",
+      "unknown": "Unexpected error. Check the Home Assistant logs."
     },
     "step": {
       "reauth_confirm": {
