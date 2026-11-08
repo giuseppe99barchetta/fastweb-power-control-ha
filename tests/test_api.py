@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import http.client
 from http.cookiejar import Cookie
 from urllib.error import HTTPError
 from urllib.request import Request
@@ -14,7 +15,9 @@ from custom_components.fastweb_power_control.api import (
     AuthenticationRequired,
     FastwebClient,
     FastwebError,
+    InvalidAuth,
     RecaptchaRequired,
+    TransientError,
     _iso_date,
     _make_cookie,
     _parse_history,
@@ -269,7 +272,7 @@ def test_login_requires_recaptcha(monkeypatch: pytest.MonkeyPatch) -> None:
         def get_content_charset(self):
             return "utf-8"
 
-        def read(self) -> bytes:
+        def read(self, size: int = -1) -> bytes:
             return self.body
 
         def __enter__(self):
@@ -323,3 +326,165 @@ def test_settings_write_retries_after_expired_session() -> None:
 def test_user_agent_uses_manifest_version() -> None:
     assert api.USER_AGENT.endswith("/" + api._manifest_version())
     assert api._manifest_version() != "dev"
+
+
+class _Resp:
+    """Minimal response object for the bounded reader and the login flow."""
+
+    def __init__(self, body: bytes | str = b"", charset: str | None = "utf-8", error=None):
+        self.body = body.encode() if isinstance(body, str) else body
+        self.charset = charset
+        self.error = error
+        self.headers = self
+
+    def get_content_charset(self):
+        return self.charset
+
+    def read(self, size: int = -1) -> bytes:
+        if self.error:
+            raise self.error
+        return self.body if size < 0 else self.body[:size]
+
+    def __enter__(self):
+        return self
+
+    def __exit__(self, *args) -> None:
+        return None
+
+
+@pytest.mark.parametrize(
+    "error",
+    [
+        TimeoutError(),
+        ConnectionResetError(),
+        http.client.RemoteDisconnected("closed"),
+        http.client.IncompleteRead(b""),
+        ValueError("Invalid header value"),
+    ],
+)
+def test_open_converts_network_errors(error: Exception) -> None:
+    client = FastwebClient()
+    client._opener = _Opener(error)
+    with pytest.raises(FastwebError) as raised:
+        client._open(Request(DASHBOARD_URL), 2)
+    assert not isinstance(raised.value, AuthenticationRequired)
+
+
+def test_read_text_is_bounded_and_tolerant() -> None:
+    assert api._read_text(_Resp(b"abc", charset="x-bogus")) == "abc"
+    assert api._read_text(_Resp(b"a\xffb")) == "a�b"
+    with pytest.raises(FastwebError):
+        api._read_text(_Resp(b"x" * (api.MAX_RESPONSE_BYTES + 1)))
+    with pytest.raises(FastwebError):
+        api._read_text(_Resp(error=TimeoutError()))
+    with pytest.raises(FastwebError):
+        api._read_text(_Resp(error=http.client.IncompleteRead(b"")))
+
+
+def test_cookie_with_control_characters_is_rejected() -> None:
+    with pytest.raises(InvalidAuth):
+        parse_cookie_header("FWB_RM=abc\r\nX-Injected: 1")
+    with pytest.raises(InvalidAuth):
+        FastwebClient(cookie="FWB_RM=abc\ndef")
+
+
+def test_status_without_data_is_a_fastweb_error() -> None:
+    client = FastwebClient()
+    client._dashboard_action = lambda *args, **kwargs: {"data": None}
+    with pytest.raises(FastwebError):
+        client.get_status()
+
+
+def test_monthly_threshold_parsing() -> None:
+    client = FastwebClient()
+    base = {field: "Y" for field in api.NOTIFY_BOOL_FIELDS.values()}
+    assert client._notification_settings(
+        {**base, "monthly_energy_threshold": "1,5"}
+    )["monthly_threshold"] == 1.5
+    for bad in ("abc", "nan", "inf"):
+        with pytest.raises(FastwebError):
+            client._notification_settings({**base, "monthly_energy_threshold": bad})
+
+
+def test_unrecognized_settings_forms_are_rejected() -> None:
+    client = FastwebClient()
+    with pytest.raises(FastwebError):
+        client._led_settings({"securityToken": TOKEN})
+    with pytest.raises(FastwebError):
+        client._notification_settings({"securityToken": TOKEN})
+
+
+def _login_pages(monkeypatch: pytest.MonkeyPatch, client: FastwebClient, *responses) -> None:
+    pages = iter(
+        [f'<form id="formLogin"><input name="securityToken" value="{TOKEN}"></form>']
+        + list(responses)
+    )
+
+    def fake_open(request: Request, timeout: float):
+        page = next(pages)
+        if isinstance(page, Exception):
+            raise page
+        return _Resp(page)
+
+    monkeypatch.setattr(client, "_open", fake_open)
+
+
+def test_login_server_errors_are_transient(monkeypatch: pytest.MonkeyPatch) -> None:
+    client = FastwebClient("user", "password")
+    _login_pages(monkeypatch, client, "<html>maintenance</html>")
+    with pytest.raises(TransientError):
+        client._login(2)
+    _login_pages(monkeypatch, client, AuthenticationRequired("403"))
+    with pytest.raises(TransientError):
+        client._login(2)
+    _login_pages(monkeypatch, client, '{"errorCode": 1, "errorMessage": "Bad password"}')
+    with pytest.raises(InvalidAuth) as raised:
+        client._login(2)
+    assert not isinstance(raised.value, TransientError)
+
+
+def test_failed_login_keeps_existing_cookies() -> None:
+    client = FastwebClient("user", "password", "FWB_RM=keep")
+
+    def expired(url: str, timeout: float) -> str:
+        raise AuthenticationRequired("expired")
+
+    def blocked(timeout: float) -> None:
+        raise RecaptchaRequired("captcha")
+
+    client._load_page = expired
+    client._login = blocked
+    with pytest.raises(RecaptchaRequired):
+        client._authenticated_page(DASHBOARD_URL, 2)
+    assert client.cookie_header == "FWB_RM=keep"
+
+
+def test_redirects_stay_on_fastweb() -> None:
+    handler = api._FastwebRedirectHandler()
+    request = Request("https://fastweb.it/myfastweb/x/")
+    for allowed in ("https://www.fastweb.it/a", "https://fastweb.it/b"):
+        assert handler.redirect_request(request, None, 302, "Found", {}, allowed)
+    for blocked in ("https://evil.example/a", "http://fastweb.it/a", "https://fastweb.it.evil.it/"):
+        with pytest.raises(HTTPError):
+            handler.redirect_request(request, None, 302, "Found", {}, blocked)
+
+
+def test_login_redirect_uri_must_stay_on_fastweb(monkeypatch: pytest.MonkeyPatch) -> None:
+    client = FastwebClient("user", "password")
+    _login_pages(monkeypatch, client, '{"errorCode": 0, "redirectURI": "https://evil.example/x"}')
+    with pytest.raises(FastwebError):
+        client._login(2)
+
+
+def test_latest_samples_sorted_by_instant() -> None:
+    # 02:30+02:00 is 00:30Z, before 02:10+01:00 (01:10Z), but sorts after as text.
+    latest = _parse_latest(
+        {
+            "latest": {
+                "2026-10-25T02:10:00+01:00": {"power": 2},
+                "2026-10-25T02:30:00+02:00": {"power": 1},
+                "2026-10-25T03:00:00": {"power": 3},
+            }
+        }
+    )
+    assert [sample["power"] for sample in latest] == [1.0, 2.0, 3.0]

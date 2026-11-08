@@ -2,8 +2,9 @@
 
 from __future__ import annotations
 
-from datetime import date, datetime
+from datetime import UTC, date, datetime
 from html.parser import HTMLParser
+from http.client import HTTPException
 from http.cookiejar import Cookie, CookieJar
 import json
 import logging
@@ -14,7 +15,7 @@ from threading import RLock
 from time import monotonic
 from urllib.error import HTTPError, URLError
 from urllib.parse import urlencode, urljoin, urlsplit
-from urllib.request import HTTPCookieProcessor, Request, build_opener
+from urllib.request import HTTPCookieProcessor, HTTPRedirectHandler, Request, build_opener
 import uuid
 
 LOGGER = logging.getLogger(__name__)
@@ -31,6 +32,10 @@ LOGIN_URL = "https://fastweb.it/myfastweb/accesso/login/"
 LOGIN_AJAX_URL = LOGIN_URL + "ajax/"
 SET_RM_URL = "https://www.fastweb.it/myfastweb/redirect/set-rm/"
 SET_MT_URL = "https://fastweb.it/myfastweb/redirect/set-mt/"
+# Portal pages are small; anything bigger is an error page or an attack.
+MAX_RESPONSE_BYTES = 5_000_000
+_CONTROL_CHARACTERS = re.compile(r"[\x00-\x1f\x7f]")
+
 
 def _manifest_version() -> str:
     try:
@@ -84,6 +89,10 @@ class AuthenticationRequired(FastwebError):
 
 class InvalidAuth(FastwebError):
     """The supplied credentials cannot establish a Fastweb session."""
+
+
+class TransientError(FastwebError):
+    """Fastweb answered with a temporary failure; credentials are not to blame."""
 
 
 class RecaptchaRequired(InvalidAuth):
@@ -152,6 +161,8 @@ def encode_multipart(fields: dict[str, str]) -> tuple[bytes, str]:
 
 
 def parse_cookie_header(header: str) -> dict[str, str]:
+    if _CONTROL_CHARACTERS.search(header):
+        raise InvalidAuth("the session cookie contains invalid characters")
     cookies: dict[str, str] = {}
     if header.lower().startswith("cookie:"):
         header = header.split(":", 1)[1].strip()
@@ -182,11 +193,50 @@ def _iso_date(value: str) -> str | None:
         raise FastwebError("invalid holiday date returned by Fastweb") from error
 
 
+def _is_fastweb_url(url: str) -> bool:
+    parts = urlsplit(url)
+    host = parts.hostname or ""
+    return parts.scheme == "https" and (host == "fastweb.it" or host.endswith(".fastweb.it"))
+
+
+class _FastwebRedirectHandler(HTTPRedirectHandler):
+    """Never follow a redirect that leaves fastweb.it."""
+
+    def redirect_request(self, req, fp, code, msg, headers, newurl):
+        if not _is_fastweb_url(newurl):
+            raise HTTPError(req.full_url, code, "redirect outside fastweb.it", headers, fp)
+        return super().redirect_request(req, fp, code, msg, headers, newurl)
+
+
+def _read_text(response) -> str:
+    """Read a bounded response body, tolerating unknown charsets and bad bytes."""
+    try:
+        raw = response.read(MAX_RESPONSE_BYTES + 1)
+    except (OSError, HTTPException) as error:
+        raise FastwebError(f"Fastweb response failed: {type(error).__name__}") from error
+    if len(raw) > MAX_RESPONSE_BYTES:
+        raise FastwebError("Fastweb response is too large")
+    try:
+        return raw.decode(response.headers.get_content_charset() or "utf-8", errors="replace")
+    except LookupError:
+        return raw.decode("utf-8", errors="replace")
+
+
+def _threshold(value: object) -> float:
+    try:
+        number = float(str(value or 0).replace(",", "."))
+    except ValueError as error:
+        raise FastwebError("invalid monthly threshold returned by Fastweb") from error
+    if not math.isfinite(number):
+        raise FastwebError("invalid monthly threshold returned by Fastweb")
+    return number
+
+
 def _parse_latest(data: dict) -> list[dict]:
     latest = data.get("latest")
     if not isinstance(latest, dict):
         raise FastwebError("invalid Fastweb recent consumption response")
-    samples: dict[str, float] = {}
+    samples: dict[datetime, tuple[str, float]] = {}
     for fallback_time, sample in latest.items():
         if not isinstance(sample, dict):
             continue
@@ -198,10 +248,12 @@ def _parse_latest(data: dict) -> list[dict]:
             normalized = datetime.fromisoformat(timestamp.replace("Z", "+00:00"))
         except ValueError:
             continue
-        samples[normalized.isoformat()] = max(0.0, float(power))
+        # Order by instant, not text: offsets differ across a DST change.
+        instant = normalized if normalized.tzinfo else normalized.replace(tzinfo=UTC)
+        samples[instant] = (normalized.isoformat(), max(0.0, float(power)))
     if not samples:
         raise FastwebError("Fastweb returned no recent consumption samples")
-    return [{"time": key, "power": samples[key]} for key in sorted(samples)]
+    return [{"time": samples[key][0], "power": samples[key][1]} for key in sorted(samples)]
 
 
 def _parse_notifications(items: object) -> list[dict]:
@@ -330,7 +382,7 @@ class FastwebClient:
 
     def _open(self, request: Request, timeout: float):
         if self._opener is None:
-            self._opener = build_opener(HTTPCookieProcessor(self.jar))
+            self._opener = build_opener(_FastwebRedirectHandler(), HTTPCookieProcessor(self.jar))
         started = monotonic()
         try:
             response = self._opener.open(request, timeout=timeout)
@@ -380,11 +432,21 @@ class FastwebClient:
                 type(error.reason).__name__,
             )
             raise FastwebError(f"Fastweb connection failed: {error.reason}") from error
+        except (OSError, HTTPException, ValueError) as error:
+            # Timeouts and dropped connections surface here, after the request left.
+            LOGGER.warning(
+                "Fastweb HTTP %s %s failed after %.2fs (%s)",
+                request.get_method(),
+                urlsplit(request.full_url).path,
+                monotonic() - started,
+                type(error).__name__,
+            )
+            raise FastwebError(f"Fastweb connection failed: {type(error).__name__}") from error
 
     def _load_page(self, url: str, timeout: float) -> str:
         with self._open(Request(url, headers={"User-Agent": USER_AGENT}), timeout) as response:
             final_url = response.geturl()
-            page = response.read().decode(response.headers.get_content_charset() or "utf-8")
+            page = _read_text(response)
         if "/accesso/" in final_url or "/contenuti-riservati/" in final_url:
             raise AuthenticationRequired("Fastweb session expired")
         return page
@@ -398,8 +460,15 @@ class FastwebClient:
             # successful login and trigger an endless /accesso/ redirect.
             # Start reauthentication with a fresh cookie jar; the opener keeps
             # using this same jar and collects the new Set-Cookie headers.
+            previous = list(self.jar)
             self.jar.clear()
-            self._login(timeout)
+            try:
+                self._login(timeout)
+            except FastwebError:
+                # A blocked login (reCAPTCHA, outage) must not cost the pasted cookie.
+                for cookie in previous:
+                    self.jar.set_cookie(cookie)
+                raise
             try:
                 return self._load_page(url, timeout)
             except AuthenticationRequired as error:
@@ -424,11 +493,9 @@ class FastwebClient:
             with self._open(
                 Request(LOGIN_URL, headers={"User-Agent": USER_AGENT}), timeout
             ) as response:
-                page = response.read().decode(
-                    response.headers.get_content_charset() or "utf-8"
-                )
+                page = _read_text(response)
         except AuthenticationRequired as error:
-            raise InvalidAuth("Fastweb rejected the login page request") from error
+            raise TransientError("Fastweb rejected the login page request") from error
         fields = extract_form_fields(page, "formLogin")
         fields.update(
             {
@@ -453,22 +520,23 @@ class FastwebClient:
         )
         try:
             with self._open(request, timeout) as response:
-                raw = response.read().decode(
-                    response.headers.get_content_charset() or "utf-8"
-                )
+                raw = _read_text(response)
         except AuthenticationRequired as error:
-            raise InvalidAuth("Fastweb rejected the login request") from error
+            raise TransientError("Fastweb rejected the login request") from error
         try:
             payload = json.loads(raw)
         except json.JSONDecodeError as error:
-            raise InvalidAuth("unexpected Fastweb login response") from error
+            raise TransientError("unexpected Fastweb login response") from error
+        if not isinstance(payload, dict):
+            raise TransientError("unexpected Fastweb login response")
         if payload.get("errorCode") != 0:
             if payload.get("needRecaptcha"):
                 # ponytail: CAPTCHA bypass is not a valid automation path.
                 raise RecaptchaRequired(
                     "Fastweb requires reCAPTCHA; automatic login stopped"
                 )
-            raise InvalidAuth(payload.get("errorMessage") or "Fastweb login failed")
+            message = _CONTROL_CHARACTERS.sub(" ", str(payload.get("errorMessage") or ""))
+            raise InvalidAuth(message[:200] or "Fastweb login failed")
 
         for enabled, url in ((payload.get("rm"), SET_RM_URL), (payload.get("mt"), SET_MT_URL)):
             if enabled:
@@ -480,11 +548,13 @@ class FastwebClient:
                         ),
                         timeout,
                     ) as response:
-                        response.read()
+                        _read_text(response)
                 except AuthenticationRequired as error:
-                    raise InvalidAuth("Fastweb rejected a post-login redirect") from error
+                    raise TransientError("Fastweb rejected a post-login redirect") from error
         if payload.get("redirectURI"):
-            url = urljoin(LOGIN_URL, payload["redirectURI"])
+            url = urljoin(LOGIN_URL, str(payload["redirectURI"]))
+            if not _is_fastweb_url(url):
+                raise FastwebError("Fastweb sent a login redirect outside fastweb.it")
             try:
                 with self._open(
                     Request(
@@ -493,9 +563,9 @@ class FastwebClient:
                     ),
                     timeout,
                 ) as response:
-                    response.read()
+                    _read_text(response)
             except AuthenticationRequired as error:
-                raise InvalidAuth("Fastweb rejected the post-login redirect") from error
+                raise TransientError("Fastweb rejected the post-login redirect") from error
 
     def _post_json(
         self, url: str, referer: str, fields: dict[str, str], timeout: float
@@ -515,15 +585,18 @@ class FastwebClient:
         )
         with self._open(request, timeout) as response:
             final_url = response.geturl()
-            raw = response.read().decode(response.headers.get_content_charset() or "utf-8")
+            raw = _read_text(response)
         if "/accesso/" in final_url or "/contenuti-riservati/" in final_url:
             raise AuthenticationRequired("Fastweb session expired while writing data")
         try:
             payload = json.loads(raw)
         except json.JSONDecodeError as error:
             raise FastwebError("unexpected Fastweb response") from error
+        if not isinstance(payload, dict):
+            raise FastwebError("unexpected Fastweb response")
         if payload.get("errorCode") != 0:
-            raise FastwebError(payload.get("errorMessage") or "Fastweb rejected the request")
+            message = _CONTROL_CHARACTERS.sub(" ", str(payload.get("errorMessage") or ""))
+            raise FastwebError(message[:200] or "Fastweb rejected the request")
         return payload
 
     def _submit_form(
@@ -580,12 +653,12 @@ class FastwebClient:
     def get_status(self, timeout: float = 15) -> dict:
         """Return plug connectivity and unread portal notifications."""
         with self._lock:
-            status_data = self._dashboard_action("plugStatus", timeout=timeout).get(
-                "data", {}
-            )
+            status_data = self._dashboard_action("plugStatus", timeout=timeout).get("data")
             notify_data = self._dashboard_action(
                 "loadNotify", {"notificationId": ""}, timeout
-            ).get("data", {})
+            ).get("data")
+            if not isinstance(status_data, dict) or not isinstance(notify_data, dict):
+                raise FastwebError("invalid Fastweb status response")
             status = status_data.get("status")
             unread = notify_data.get("unread")
             if not isinstance(status, str) or not isinstance(unread, int):
@@ -617,21 +690,26 @@ class FastwebClient:
                 history["month"] = self._history(HISTORY_MONTH, timeout)
             except InvalidAuth:
                 raise
-            except FastwebError:
+            except FastwebError as error:
                 # The weekly data is still useful when the monthly view fails.
+                LOGGER.debug("Fastweb monthly history unavailable: %s", error)
                 history["month"] = None
             return history
 
     def _led_settings(self, fields: dict[str, str]) -> dict[str, bool]:
+        if not any(field in fields for field in LED_FIELDS.values()):
+            raise FastwebError("unrecognized Fastweb LED settings form")
         return {key: fields.get(field) == "Y" for key, field in LED_FIELDS.items()}
 
     def _notification_settings(self, fields: dict[str, str]) -> dict:
+        if not any(field in fields for field in NOTIFY_BOOL_FIELDS.values()):
+            raise FastwebError("unrecognized Fastweb notification settings form")
         return {
             **{
                 key: fields.get(field) == "Y"
                 for key, field in NOTIFY_BOOL_FIELDS.items()
             },
-            "monthly_threshold": float(fields.get("monthly_energy_threshold") or 0),
+            "monthly_threshold": _threshold(fields.get("monthly_energy_threshold")),
             "holiday_from": _iso_date(fields.get("holiday_mode_from", "")),
             "holiday_to": _iso_date(fields.get("holiday_mode_to", "")),
         }
