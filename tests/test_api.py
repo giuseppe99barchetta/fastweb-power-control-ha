@@ -512,3 +512,10 @@ def test_latest_samples_sorted_by_instant() -> None:
         }
     )
     assert [sample["power"] for sample in latest] == [1.0, 2.0, 3.0]
+
+
+def test_cookie_accepts_common_paste_formats() -> None:
+    token = "TklK" + "a" * 60 + "%3D%3D"
+    for pasted in (token, f"FWB_RM={token}", f'FWB_RM:"{token}"', f"Cookie: FWB_RM={token}"):
+        assert parse_cookie_header(pasted) == {"FWB_RM": token}
+    assert parse_cookie_header('FWB_RM:"a"; wasin = fwnetwork') == {"FWB_RM": "a", "wasin": "fwnetwork"}

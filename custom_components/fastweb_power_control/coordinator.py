@@ -27,7 +27,7 @@ HISTORY_REFRESH_SECONDS = 3600
 CACHE_EXPIRY_FACTOR = 3
 # Optional portal pages are skipped when realtime polling already took this long
 # (for example after a full sign-in), keeping one cycle close to the interval.
-OPTIONAL_BUDGET_SECONDS = 20
+OPTIONAL_BUDGET_SECONDS = 90
 # A failed optional refresh is retried no sooner than this, not on every cycle.
 OPTIONAL_RETRY_SECONDS = 60
 _OPTIONAL_REFRESHES = (

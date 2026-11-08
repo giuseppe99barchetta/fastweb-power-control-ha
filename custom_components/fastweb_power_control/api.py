@@ -74,6 +74,8 @@ NOTIFY_BOOL_FIELDS = {
     "monthly_budget": "monthly_energy_budget",
     "holiday_mode": "holiday_mode",
 }
+# Fastweb pages sometimes take 30s+, so keep the timeout generous.
+REQUEST_TIMEOUT = 60
 HISTORY_WEEK = "last-seven-days"
 HISTORY_MONTH = "last-thirty-days"
 NOTIFICATION_FIELDS = ("id", "type", "title", "message", "created_at", "read")
@@ -167,12 +169,15 @@ def parse_cookie_header(header: str) -> dict[str, str]:
     if _CONTROL_CHARACTERS.search(header):
         raise InvalidAuth("the session cookie contains invalid characters")
     cookies: dict[str, str] = {}
-    if header.lower().startswith("cookie:"):
-        header = header.split(":", 1)[1].strip()
+    header = re.sub(r"^(?:set-)?cookie\s*:\s*", "", header, flags=re.IGNORECASE)
+    # Accepts ``name=value``, Firefox's ``name:"value"``, optional quotes, and a
+    # lone value (taken as the long-lived FWB_RM token).
     for part in header.split(";"):
-        name, separator, value = part.strip().partition("=")
-        if separator and name:
-            cookies[name] = value
+        match = re.match(r"([\w.-]+)\s*[=:]\s*(.*)", part.strip(), re.DOTALL)
+        if match:
+            cookies[match[1]] = match[2].strip().strip("\"'")
+    if len(header) >= 40 and ";" not in header and not cookies.keys() & set(AUTH_COOKIE_NAMES):
+        return {"FWB_RM": header.strip("\"'")}
     return cookies
 
 
@@ -625,7 +630,7 @@ class FastwebClient:
             return self._post_json(ajax_url, page_url, fields, timeout)
 
     def _dashboard_action(
-        self, action: str, extra: dict[str, str] | None = None, timeout: float = 15
+        self, action: str, extra: dict[str, str] | None = None, timeout: float = REQUEST_TIMEOUT
     ) -> dict:
         """Call one dashboard action and renew an expired session once."""
         if self._token is None:
@@ -646,7 +651,7 @@ class FastwebClient:
         self._token = extract_security_token(page)
         return extract_form_fields(page, "request_form")
 
-    def get_realtime(self, timeout: float = 15) -> dict:
+    def get_realtime(self, timeout: float = REQUEST_TIMEOUT) -> dict:
         """Return realtime consumption, reusing the page token while valid."""
         with self._lock:
             payload = self._dashboard_action("consumptionRealtime", timeout=timeout)
@@ -664,7 +669,7 @@ class FastwebClient:
             payload["data"].pop("realtime_sin", None)
             return payload
 
-    def get_status(self, timeout: float = 15) -> dict:
+    def get_status(self, timeout: float = REQUEST_TIMEOUT) -> dict:
         """Return plug connectivity and unread portal notifications."""
         with self._lock:
             status_data = self._dashboard_action("plugStatus", timeout=timeout).get("data")
@@ -684,7 +689,7 @@ class FastwebClient:
                 "notifications": _parse_notifications(notify_data.get("notifications")),
             }
 
-    def get_latest(self, timeout: float = 15) -> list[dict]:
+    def get_latest(self, timeout: float = REQUEST_TIMEOUT) -> list[dict]:
         """Return recent power samples used to backfill cumulative energy."""
         with self._lock:
             payload = self._dashboard_action("consumptionLatest", timeout=timeout)
@@ -696,7 +701,7 @@ class FastwebClient:
         )
         return _parse_history(payload.get("data") or {})
 
-    def get_history(self, timeout: float = 15) -> dict:
+    def get_history(self, timeout: float = REQUEST_TIMEOUT) -> dict:
         """Return the last seven days, with the last thirty under ``month``."""
         with self._lock:
             history = self._history(HISTORY_WEEK, timeout)
@@ -728,7 +733,7 @@ class FastwebClient:
             "holiday_to": _iso_date(fields.get("holiday_mode_to", "")),
         }
 
-    def get_settings(self, timeout: float = 15) -> dict:
+    def get_settings(self, timeout: float = REQUEST_TIMEOUT) -> dict:
         """Read all settings exposed by the Fastweb portal."""
         with self._lock:
             led = self._led_settings(self._form(LED_SETTINGS_URL, timeout))
@@ -737,7 +742,7 @@ class FastwebClient:
             )
             return {"led": led, "notifications": notifications}
 
-    def update_led_settings(self, changes: dict, timeout: float = 15) -> dict:
+    def update_led_settings(self, changes: dict, timeout: float = REQUEST_TIMEOUT) -> dict:
         """Update LED/buzzer values while preserving the other portal settings."""
         with self._lock:
             current = self._led_settings(self._form(LED_SETTINGS_URL, timeout))
@@ -758,7 +763,7 @@ class FastwebClient:
             self._submit_form(LED_SETTINGS_URL, LED_AJAX_URL, fields, timeout)
             return current
 
-    def update_notification_settings(self, changes: dict, timeout: float = 15) -> dict:
+    def update_notification_settings(self, changes: dict, timeout: float = REQUEST_TIMEOUT) -> dict:
         """Update notification values while preserving the rest of the form."""
         with self._lock:
             current = self._notification_settings(
