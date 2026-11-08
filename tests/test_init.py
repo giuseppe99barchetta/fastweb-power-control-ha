@@ -11,7 +11,7 @@ from freezegun.api import FrozenDateTimeFactory
 from homeassistant.config_entries import ConfigEntryState
 from homeassistant.const import STATE_UNAVAILABLE, STATE_UNKNOWN
 from homeassistant.core import HomeAssistant, State
-from homeassistant.exceptions import ServiceValidationError
+from homeassistant.exceptions import HomeAssistantError, ServiceValidationError
 from homeassistant.helpers import device_registry as dr, issue_registry as ir
 import pytest
 from pytest_homeassistant_custom_component.common import (
@@ -21,7 +21,11 @@ from pytest_homeassistant_custom_component.common import (
 )
 
 from custom_components.fastweb_power_control import coordinator as coordinator_module
-from custom_components.fastweb_power_control.api import FastwebError, RecaptchaRequired
+from custom_components.fastweb_power_control.api import (
+    FastwebError,
+    InvalidAuth,
+    RecaptchaRequired,
+)
 from custom_components.fastweb_power_control.const import CONF_COOKIE, DOMAIN
 from custom_components.fastweb_power_control.diagnostics import (
     async_get_config_entry_diagnostics,
@@ -59,7 +63,8 @@ async def test_setup_creates_entities(
     assert hass.states.get("sensor.fastweb_power_control_contracted_power_usage").state == "50.0"
     assert hass.states.get(CONNECTIVITY).state == "on"
     assert hass.states.get(BUZZER).state == "off"
-    assert hass.states.get("sensor.fastweb_power_control_last_update").state != STATE_UNAVAILABLE
+    last_update = hass.states.get("sensor.fastweb_power_control_last_update").state
+    assert datetime.fromisoformat(last_update).tzinfo is not None
     assert config_entry.data[CONF_COOKIE] == "FWB_RM=abc"
 
     assert await hass.config_entries.async_unload(config_entry.entry_id)
@@ -499,3 +504,62 @@ async def test_device_is_a_service(
     await _setup(hass, config_entry)
     (device,) = dr.async_entries_for_config_entry(dr.async_get(hass), config_entry.entry_id)
     assert device.entry_type is dr.DeviceEntryType.SERVICE
+
+
+async def test_number_and_date_write_settings(
+    hass: HomeAssistant, config_entry: MockConfigEntry, mock_client: MagicMock
+) -> None:
+    await _setup(hass, config_entry)
+    threshold = "number.fastweb_power_control_monthly_energy_threshold"
+    assert float(hass.states.get(threshold).state) == 250.0
+    await hass.services.async_call(
+        "number", "set_value", {"entity_id": threshold, "value": 300}, blocking=True
+    )
+    mock_client.update_notification_settings.assert_called_with({"monthly_threshold": 300.0})
+    assert float(hass.states.get(threshold).state) == 300.0
+
+    start = "date.fastweb_power_control_holiday_start"
+    assert hass.states.get(start).state == STATE_UNKNOWN
+    await hass.services.async_call(
+        "date", "set_value", {"entity_id": start, "date": "2026-08-01"}, blocking=True
+    )
+    mock_client.update_notification_settings.assert_called_with({"holiday_from": date(2026, 8, 1)})
+    assert hass.states.get(start).state == "2026-08-01"
+
+
+async def test_led_switch_writes_group_setting(
+    hass: HomeAssistant, config_entry: MockConfigEntry, mock_client: MagicMock
+) -> None:
+    await _setup(hass, config_entry)
+    all_leds = "switch.fastweb_power_control_all_leds"
+    assert hass.states.get(all_leds).state == "on"
+    await hass.services.async_call(
+        "switch", "turn_off", {"entity_id": all_leds}, blocking=True
+    )
+    mock_client.update_led_settings.assert_called_with({"led_all": False})
+    assert hass.states.get(all_leds).state == "off"
+
+
+async def test_failed_write_raises_and_keeps_state(
+    hass: HomeAssistant, config_entry: MockConfigEntry, mock_client: MagicMock
+) -> None:
+    await _setup(hass, config_entry)
+    mock_client.update_led_settings.side_effect = FastwebError("portal said no")
+    with pytest.raises(HomeAssistantError, match="portal said no"):
+        await hass.services.async_call(
+            "switch", "turn_on", {"entity_id": BUZZER}, blocking=True
+        )
+    assert hass.states.get(BUZZER).state == "off"
+
+
+async def test_write_with_rejected_login_starts_reauth(
+    hass: HomeAssistant, config_entry: MockConfigEntry, mock_client: MagicMock
+) -> None:
+    await _setup(hass, config_entry)
+    mock_client.update_led_settings.side_effect = InvalidAuth("bad credentials")
+    with pytest.raises(HomeAssistantError):
+        await hass.services.async_call(
+            "switch", "turn_on", {"entity_id": BUZZER}, blocking=True
+        )
+    flows = hass.config_entries.flow.async_progress()
+    assert any(flow["context"]["source"] == "reauth" for flow in flows)

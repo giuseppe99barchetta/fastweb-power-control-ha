@@ -56,8 +56,6 @@ threshold, and can send a notification.
 
 ## Install with HACS
 
-The repository must be public on GitHub before HACS can install it.
-
 1. In HACS, open **Integrations → menu → Custom repositories**.
 2. Add
    `https://github.com/giuseppe99barchetta/fastweb-power-control-ha` as an
@@ -71,7 +69,9 @@ The repository must be public on GitHub before HACS can install it.
    cookie** as described below.
 
 The interval and power warning threshold can later be changed through
-**Configure**; credentials and the session cookie through **Reconfigure**. Home Assistant 2026.3 or later is required.
+**Configure** (update interval 10-300 seconds, default 30; power warning
+threshold 50-100 %, default 90); credentials and the session cookie through
+**Reconfigure**. Home Assistant 2026.3 or later is required.
 
 The interval controls how often Home Assistant polls Fastweb, not how often
 Fastweb produces a new sample. Fastweb may keep the same value for about one

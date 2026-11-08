@@ -57,8 +57,6 @@ soglia, e può inviare una notifica.
 
 ## Installazione con HACS
 
-Il repository deve essere pubblico su GitHub prima di poter essere installato.
-
 1. In HACS apri **Integrations → menu → Custom repositories**.
 2. Aggiungi
    `https://github.com/giuseppe99barchetta/fastweb-power-control-ha` come
@@ -73,8 +71,9 @@ Il repository deve essere pubblico su GitHub prima di poter essere installato.
 
 L’intervallo e la soglia dell’avviso di potenza possono essere cambiati
 successivamente tramite **Configura**; credenziali e cookie di sessione tramite
-**Riconfigura**.
-Home Assistant 2026.3 o successivo è richiesto.
+**Riconfigura**. Intervallo: 10-300 secondi (predefinito 30); soglia dell’avviso
+di potenza: 50-100 % (predefinita 90). Home Assistant 2026.3 o successivo è
+richiesto.
 
 L’intervallo indica ogni quanto Home Assistant interroga Fastweb, non ogni
 quanto Fastweb produce un nuovo campione. Fastweb può mantenere lo stesso

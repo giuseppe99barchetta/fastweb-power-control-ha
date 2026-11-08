@@ -4,6 +4,8 @@ blueprint:
     Turns off selected loads when the contracted power usage stays above a
     threshold, before the meter trips. Optionally sends a notification.
   domain: automation
+  homeassistant:
+    min_version: 2024.10.0
   source_url: https://github.com/giuseppe99barchetta/fastweb-power-control-ha/blob/main/blueprints/automation/fastweb_power_control/power_limit_load_shedding.yaml
   input:
     load_sensor:

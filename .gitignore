@@ -10,3 +10,5 @@ __pycache__/
 *.cookie.tmp
 .pytest_cache/
 .coverage
+htmlcov/
+.mypy_cache/
