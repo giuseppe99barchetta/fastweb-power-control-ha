@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from dataclasses import dataclass
 from datetime import datetime
 
 from homeassistant.components.sensor import (
@@ -9,6 +10,7 @@ from homeassistant.components.sensor import (
     SensorDeviceClass,
     SensorEntity,
     SensorEntityDescription,
+    SensorExtraStoredData,
     SensorStateClass,
 )
 from homeassistant.config_entries import ConfigEntry
@@ -143,6 +145,21 @@ class FastwebDataSensor(FastwebEntity, SensorEntity):
         return value
 
 
+@dataclass
+class _EnergyStoredData(SensorExtraStoredData):
+    """Restored total plus the sample it was integrated up to."""
+
+    last_sample: str | None = None
+    last_power: float | None = None
+
+    def as_dict(self) -> dict:
+        return {
+            **super().as_dict(),
+            "last_sample": self.last_sample,
+            "last_power": self.last_power,
+        }
+
+
 class FastwebEnergySensor(FastwebEntity, RestoreSensor):
     """Energy accumulated from Fastweb's timestamped recent samples."""
 
@@ -168,16 +185,15 @@ class FastwebEnergySensor(FastwebEntity, RestoreSensor):
                 self._energy = max(0.0, float(last_data.native_value))
             except (TypeError, ValueError):
                 pass
-        if last_state := await self.async_get_last_state():
-            try:
-                self._last_sample = datetime.fromisoformat(
-                    last_state.attributes["last_sample"]
-                )
-                self._last_power = max(
-                    0.0, float(last_state.attributes["last_power"])
-                )
-            except (KeyError, TypeError, ValueError):
-                pass
+        extra = await self.async_get_last_extra_data()
+        restored = extra.as_dict() if extra else {}
+        if "last_sample" not in restored and (last_state := await self.async_get_last_state()):
+            restored = dict(last_state.attributes)  # states saved before the extra data
+        try:
+            self._last_sample = datetime.fromisoformat(restored["last_sample"])
+            self._last_power = max(0.0, float(restored["last_power"]))
+        except (KeyError, TypeError, ValueError):
+            pass
         if self._last_sample is None and self.coordinator.latest_samples:
             latest = self.coordinator.latest_samples[-1]
             self._last_sample = datetime.fromisoformat(latest["time"])
@@ -205,6 +221,15 @@ class FastwebEnergySensor(FastwebEntity, RestoreSensor):
         if self.coordinator.last_update_success:
             self._process_samples()
         super()._handle_coordinator_update()
+
+    @property
+    def extra_restore_state_data(self) -> _EnergyStoredData:
+        return _EnergyStoredData(
+            self.native_value,
+            self.native_unit_of_measurement,
+            self._last_sample.isoformat() if self._last_sample else None,
+            self._last_power,
+        )
 
     @property
     def native_value(self) -> float:

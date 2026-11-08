@@ -2,20 +2,22 @@
 
 from __future__ import annotations
 
-from datetime import date, timedelta
+from datetime import UTC, date, datetime, timedelta
 import threading
+from types import SimpleNamespace
 from unittest.mock import MagicMock, PropertyMock
 
 from freezegun.api import FrozenDateTimeFactory
 from homeassistant.config_entries import ConfigEntryState
 from homeassistant.const import STATE_UNAVAILABLE, STATE_UNKNOWN
-from homeassistant.core import HomeAssistant
+from homeassistant.core import HomeAssistant, State
 from homeassistant.exceptions import ServiceValidationError
-from homeassistant.helpers import issue_registry as ir
+from homeassistant.helpers import device_registry as dr, issue_registry as ir
 import pytest
 from pytest_homeassistant_custom_component.common import (
     MockConfigEntry,
     async_fire_time_changed,
+    mock_restore_cache_with_extra_data,
 )
 
 from custom_components.fastweb_power_control import coordinator as coordinator_module
@@ -25,7 +27,7 @@ from custom_components.fastweb_power_control.diagnostics import (
     async_get_config_entry_diagnostics,
 )
 
-from .conftest import NOTIFICATION_OLD
+from .conftest import NOTIFICATION_OLD, USERNAME
 
 POWER = "sensor.fastweb_power_control_current_consumption"
 PEAK = "sensor.fastweb_power_control_peak_power_today"
@@ -361,3 +363,139 @@ async def test_cookie_is_read_outside_the_event_loop(
     await _setup(hass, config_entry)
     assert readers
     assert loop_thread not in readers
+
+
+STALE = "binary_sensor.fastweb_power_control_stale_consumption_data"
+ENERGY = "sensor.fastweb_power_control_cumulative_consumption"
+
+
+async def test_stale_data_follows_portal_sample_age(
+    hass: HomeAssistant,
+    config_entry: MockConfigEntry,
+    mock_client: MagicMock,
+    freezer: FrozenDateTimeFactory,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    clock = [1000.0]
+    monkeypatch.setattr(coordinator_module, "monotonic", lambda: clock[0])
+    mock_client.get_latest.return_value = [
+        {"time": datetime.now(UTC).isoformat(), "power": 1000.0}
+    ]
+    await _setup(hass, config_entry)
+    assert hass.states.get(STALE).state == "off"
+
+    # The portal keeps answering with the same sample while polling succeeds.
+    clock[0] += 301
+    await _tick(hass, freezer, 1000)
+    assert hass.states.get(POWER).state == "1500"
+    assert hass.states.get(STALE).state == "on"
+
+
+async def test_energy_baseline_survives_unavailable_shutdown(
+    hass: HomeAssistant, config_entry: MockConfigEntry, mock_client: MagicMock
+) -> None:
+    mock_restore_cache_with_extra_data(
+        hass,
+        [
+            (
+                State(ENERGY, STATE_UNAVAILABLE),
+                {
+                    "native_value": 5.0,
+                    "native_unit_of_measurement": "kWh",
+                    "last_sample": "2026-07-13T09:59:00+02:00",
+                    "last_power": 1000.0,
+                },
+            )
+        ],
+    )
+    await _setup(hass, config_entry)
+    # 09:59 -> 10:00 -> 10:01 at 1 kW: two minutes on top of the restored total.
+    assert float(hass.states.get(ENERGY).state) == pytest.approx(5.033333, abs=1e-6)
+
+
+async def test_energy_restores_from_old_state_attributes(
+    hass: HomeAssistant, config_entry: MockConfigEntry, mock_client: MagicMock
+) -> None:
+    mock_restore_cache_with_extra_data(
+        hass,
+        [
+            (
+                State(
+                    ENERGY,
+                    "5.0",
+                    {"last_sample": "2026-07-13T09:59:00+02:00", "last_power": 1000.0},
+                ),
+                {"native_value": 5.0, "native_unit_of_measurement": "kWh"},
+            )
+        ],
+    )
+    await _setup(hass, config_entry)
+    assert float(hass.states.get(ENERGY).state) == pytest.approx(5.033333, abs=1e-6)
+
+
+async def test_notifications_arriving_while_offline_fire_after_restart(
+    hass: HomeAssistant, config_entry: MockConfigEntry, mock_client: MagicMock
+) -> None:
+    mock_restore_cache_with_extra_data(
+        hass,
+        [(State(EVENT, STATE_UNKNOWN), {"last_created_at": NOTIFICATION_OLD["created_at"]})],
+    )
+    missed = {
+        "id": "missed-1",
+        "type": "provider_disconnection",
+        "title": "Supply interruption",
+        "message": "While Home Assistant was off",
+        "created_at": "2026-07-02T08:00:00Z",
+        "read": False,
+    }
+    mock_client.get_status.return_value = {
+        **mock_client.get_status.return_value,
+        "notifications": [NOTIFICATION_OLD, missed],
+    }
+    await _setup(hass, config_entry)
+    attributes = hass.states.get(EVENT).attributes
+    assert attributes["notification_id"] == "missed-1"
+
+
+async def test_known_notifications_are_not_replayed_after_restart(
+    hass: HomeAssistant, config_entry: MockConfigEntry, mock_client: MagicMock
+) -> None:
+    mock_restore_cache_with_extra_data(
+        hass,
+        [(State(EVENT, STATE_UNKNOWN), {"last_created_at": NOTIFICATION_OLD["created_at"]})],
+    )
+    await _setup(hass, config_entry)
+    assert hass.states.get(EVENT).state == STATE_UNKNOWN
+
+
+async def test_recaptcha_issue_removed_with_entry(
+    hass: HomeAssistant, config_entry: MockConfigEntry, mock_client: MagicMock
+) -> None:
+    mock_client.get_realtime.side_effect = RecaptchaRequired("captcha")
+    config_entry.add_to_hass(hass)
+    await hass.config_entries.async_setup(config_entry.entry_id)
+    await hass.async_block_till_done()
+    assert ir.async_get(hass).async_get_issue(DOMAIN, "recaptcha_required")
+
+    await hass.config_entries.async_remove(config_entry.entry_id)
+    assert ir.async_get(hass).async_get_issue(DOMAIN, "recaptcha_required") is None
+
+
+async def test_diagnostics_redacts_personal_portal_data(
+    hass: HomeAssistant, config_entry: MockConfigEntry, mock_client: MagicMock
+) -> None:
+    mock_client.jar = [SimpleNamespace(name="FWB_RM", domain="fastweb.it")]
+    await _setup(hass, config_entry)
+    result = await async_get_config_entry_diagnostics(hass, config_entry)
+    text = str(result)
+    for private in ("secret", USERNAME, NOTIFICATION_OLD["message"], NOTIFICATION_OLD["title"]):
+        assert private not in text
+    assert result["runtime"]["authenticated_cookies"] == ["FWB_RM@fastweb.it"]
+
+
+async def test_device_is_a_service(
+    hass: HomeAssistant, config_entry: MockConfigEntry, mock_client: MagicMock
+) -> None:
+    await _setup(hass, config_entry)
+    (device,) = dr.async_entries_for_config_entry(dr.async_get(hass), config_entry.entry_id)
+    assert device.entry_type is dr.DeviceEntryType.SERVICE

@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 from homeassistant.config_entries import ConfigEntry
-from homeassistant.helpers.device_registry import DeviceInfo
+from homeassistant.helpers.device_registry import DeviceEntryType, DeviceInfo
 from homeassistant.helpers.update_coordinator import CoordinatorEntity
 
 from .const import DOMAIN
@@ -21,6 +21,7 @@ class FastwebEntity(CoordinatorEntity[FastwebCoordinator]):
         super().__init__(coordinator)
         self._attr_unique_id = f"{entry.entry_id}_{unique_key}"
         self._attr_device_info = DeviceInfo(
+            entry_type=DeviceEntryType.SERVICE,
             identifiers={(DOMAIN, entry.entry_id)},
             manufacturer="Fastweb",
             model="Power Control",

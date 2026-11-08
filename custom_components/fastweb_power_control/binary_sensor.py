@@ -15,6 +15,9 @@ from .coordinator import FastwebConfigEntry
 from .entity import FastwebEntity
 
 PARALLEL_UPDATES = 0
+# The portal publishes a sample about every minute; this long without a new
+# one means it stopped updating even though polling still succeeds.
+STALE_SAMPLE_SECONDS = 900
 
 
 async def async_setup_entry(
@@ -69,6 +72,14 @@ class FastwebStaleSensor(FastwebEntity, BinarySensorEntity):
     def is_on(self) -> bool:
         if not self.coordinator.last_update_success or not self.coordinator.data:
             return True
+        samples = self.coordinator.latest_samples
+        if samples:
+            newest = datetime.fromisoformat(samples[-1]["time"])
+            # Naive timestamps have an unknown zone: do not guess an age from them.
+            if newest.tzinfo:
+                age = (datetime.now(UTC) - newest).total_seconds()
+                if age > STALE_SAMPLE_SECONDS:
+                    return True
         last_update = self.coordinator.data.get("last_update")
         if not last_update:
             return True

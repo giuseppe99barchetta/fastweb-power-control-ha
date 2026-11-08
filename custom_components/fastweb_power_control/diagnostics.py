@@ -11,6 +11,8 @@ from .const import CONF_COOKIE
 from .coordinator import FastwebConfigEntry
 
 TO_REDACT = {CONF_COOKIE, CONF_PASSWORD, CONF_USERNAME}
+# Notification texts and holiday dates identify the household.
+TO_REDACT_DATA = {"title", "message", "holiday_from", "holiday_to"}
 
 
 async def async_get_config_entry_diagnostics(
@@ -22,7 +24,7 @@ async def async_get_config_entry_diagnostics(
     return {
         "config_entry": async_redact_data(dict(entry.data), TO_REDACT),
         "options": dict(entry.options),
-        "data": coordinator.data,
+        "data": async_redact_data(coordinator.data or {}, TO_REDACT_DATA),
         "runtime": {
             "last_update_success": coordinator.last_update_success,
             "update_interval_seconds": coordinator.update_interval.total_seconds(),
