@@ -391,7 +391,7 @@ async def test_stale_data_follows_portal_sample_age(
 
     # The portal keeps answering with the same sample while polling succeeds.
     clock[0] += 301
-    await _tick(hass, freezer, 1000)
+    await _tick(hass, freezer, 2000)
     assert hass.states.get(POWER).state == "1500"
     assert hass.states.get(STALE).state == "on"
 
@@ -563,3 +563,35 @@ async def test_write_with_rejected_login_starts_reauth(
         )
     flows = hass.config_entries.flow.async_progress()
     assert any(flow["context"]["source"] == "reauth" for flow in flows)
+
+
+async def test_event_keeps_last_event_when_state_is_saved(
+    hass: HomeAssistant,
+    config_entry: MockConfigEntry,
+    mock_client: MagicMock,
+    freezer: FrozenDateTimeFactory,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    clock = [1000.0]
+    monkeypatch.setattr(coordinator_module, "monotonic", lambda: clock[0])
+    await _setup(hass, config_entry)
+    new = {
+        "id": "new-1",
+        "type": "provider_disconnection",
+        "title": "T",
+        "message": "M",
+        "created_at": "2026-10-17T10:51:07.5+00:00",
+        "read": False,
+    }
+    mock_client.get_status.return_value = {
+        **mock_client.get_status.return_value,
+        "notifications": [NOTIFICATION_OLD, new],
+    }
+    clock[0] += 61
+    await _tick(hass, freezer, 30)
+
+    saved = hass.data["event"].get_entity(EVENT).extra_restore_state_data.as_dict()
+    # The entity's own last event survives next to the catch-up marker.
+    assert saved["last_event_type"] == "provider_disconnection"
+    assert saved["last_event_attributes"]["notification_id"] == "new-1"
+    assert saved["last_created_at"] == new["created_at"]

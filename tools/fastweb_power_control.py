@@ -60,7 +60,7 @@ def save_cookie(path: str, header: str) -> None:
     temporary = target.with_name(target.name + ".tmp")
     temporary.unlink(missing_ok=True)
     # Create the file private from the start; a later chmod leaves a readable window.
-    descriptor = os.open(temporary, os.O_WRONLY | os.O_CREAT | os.O_TRUNC, 0o600)
+    descriptor = os.open(temporary, os.O_WRONLY | os.O_CREAT | os.O_EXCL, 0o600)
     with os.fdopen(descriptor, "w", encoding="utf-8") as handle:
         handle.write(header + "\n")
     os.replace(temporary, target)

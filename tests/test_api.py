@@ -434,13 +434,35 @@ def test_login_server_errors_are_transient(monkeypatch: pytest.MonkeyPatch) -> N
     _login_pages(monkeypatch, client, "<html>maintenance</html>")
     with pytest.raises(TransientError):
         client._login(2)
+    client = FastwebClient("user", "password")
     _login_pages(monkeypatch, client, AuthenticationRequired("403"))
     with pytest.raises(TransientError):
         client._login(2)
+    client = FastwebClient("user", "password")
     _login_pages(monkeypatch, client, '{"errorCode": 1, "errorMessage": "Bad password"}')
     with pytest.raises(InvalidAuth) as raised:
         client._login(2)
     assert not isinstance(raised.value, TransientError)
+
+
+def test_failed_login_is_not_retried_immediately(monkeypatch: pytest.MonkeyPatch) -> None:
+    client = FastwebClient("user", "password")
+    _login_pages(monkeypatch, client, "<html>maintenance</html>")
+    with pytest.raises(TransientError):
+        client._login(2)
+    opened: list[Request] = []
+    monkeypatch.setattr(client, "_open", lambda request, timeout: opened.append(request))
+    with pytest.raises(TransientError, match="paused"):
+        client._login(2)
+    assert not opened
+    client._login_retry_at = 0.0  # cooldown over: the login page is requested again
+    with pytest.raises((AttributeError, TypeError)):
+        client._login(2)
+    assert opened
+
+
+def test_cookie_header_is_stripped_before_validation() -> None:
+    assert parse_cookie_header("\tFWB_RM=abc \n") == {"FWB_RM": "abc"}
 
 
 def test_failed_login_keeps_existing_cookies() -> None:
@@ -450,6 +472,7 @@ def test_failed_login_keeps_existing_cookies() -> None:
         raise AuthenticationRequired("expired")
 
     def blocked(timeout: float) -> None:
+        client.jar.set_cookie(_host_cookie("PHPSESSID", "partial", "other.example"))
         raise RecaptchaRequired("captcha")
 
     client._load_page = expired
@@ -457,6 +480,7 @@ def test_failed_login_keeps_existing_cookies() -> None:
     with pytest.raises(RecaptchaRequired):
         client._authenticated_page(DASHBOARD_URL, 2)
     assert client.cookie_header == "FWB_RM=keep"
+    assert [cookie.name for cookie in client.jar] == ["FWB_RM"]
 
 
 def test_redirects_stay_on_fastweb() -> None:

@@ -34,6 +34,8 @@ SET_RM_URL = "https://www.fastweb.it/myfastweb/redirect/set-rm/"
 SET_MT_URL = "https://fastweb.it/myfastweb/redirect/set-mt/"
 # Portal pages are small; anything bigger is an error page or an attack.
 MAX_RESPONSE_BYTES = 5_000_000
+# After a rejected login, wait before trying again: polling must not hammer it.
+LOGIN_RETRY_SECONDS = 300
 _CONTROL_CHARACTERS = re.compile(r"[\x00-\x1f\x7f]")
 
 
@@ -161,6 +163,7 @@ def encode_multipart(fields: dict[str, str]) -> tuple[bytes, str]:
 
 
 def parse_cookie_header(header: str) -> dict[str, str]:
+    header = header.strip()
     if _CONTROL_CHARACTERS.search(header):
         raise InvalidAuth("the session cookie contains invalid characters")
     cookies: dict[str, str] = {}
@@ -358,6 +361,7 @@ class FastwebClient:
         self.jar = CookieJar()
         self._lock = RLock()
         self._token: str | None = None
+        self._login_retry_at = 0.0
         # ``build_opener`` creates an SSL context and loads system certificates.
         # Keep that blocking work out of Home Assistant's event loop; callers
         # invoke the synchronous request methods in the executor.
@@ -466,6 +470,7 @@ class FastwebClient:
                 self._login(timeout)
             except FastwebError:
                 # A blocked login (reCAPTCHA, outage) must not cost the pasted cookie.
+                self.jar.clear()  # drop partial cookies from the failed attempt
                 for cookie in previous:
                     self.jar.set_cookie(cookie)
                 raise
@@ -486,6 +491,15 @@ class FastwebClient:
                 ) from error
 
     def _login(self, timeout: float) -> None:
+        if monotonic() < self._login_retry_at:
+            raise TransientError("Fastweb login paused after a recent failure")
+        try:
+            self._login_request(timeout)
+        except TransientError:
+            self._login_retry_at = monotonic() + LOGIN_RETRY_SECONDS
+            raise
+
+    def _login_request(self, timeout: float) -> None:
         if not self.username or not self.password:
             raise InvalidAuth("missing Fastweb credentials")
 

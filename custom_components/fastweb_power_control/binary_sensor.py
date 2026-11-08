@@ -15,9 +15,9 @@ from .coordinator import FastwebConfigEntry
 from .entity import FastwebEntity
 
 PARALLEL_UPDATES = 0
-# The portal publishes a sample about every minute; this long without a new
-# one means it stopped updating even though polling still succeeds.
-STALE_SAMPLE_SECONDS = 900
+# Samples are refreshed every few minutes, slower with a long polling interval;
+# half an hour without a new one means the portal stopped updating.
+STALE_SAMPLE_SECONDS = 1800
 
 
 async def async_setup_entry(

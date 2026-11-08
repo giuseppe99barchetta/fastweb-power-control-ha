@@ -2,13 +2,14 @@
 
 from __future__ import annotations
 
-from dataclasses import dataclass
+from dataclasses import asdict, dataclass
+from datetime import UTC, datetime
 
-from homeassistant.components.event import EventEntity
+from homeassistant.components.event import EventEntity, EventExtraStoredData
 from homeassistant.config_entries import ConfigEntry
 from homeassistant.core import HomeAssistant, callback
 from homeassistant.helpers.entity_platform import AddConfigEntryEntitiesCallback
-from homeassistant.helpers.restore_state import ExtraStoredData
+from homeassistant.helpers.start import async_at_started
 
 from .coordinator import FastwebConfigEntry
 from .entity import FastwebEntity
@@ -32,14 +33,23 @@ async def async_setup_entry(
     async_add_entities([FastwebNotificationEvent(entry.runtime_data, entry)])
 
 
-@dataclass
-class _SeenNotifications(ExtraStoredData):
-    """Newest notification already handled, to catch up after a restart."""
+def _when(value: str | None) -> datetime:
+    """Parse a portal timestamp; unreadable values sort as the oldest."""
+    try:
+        moment = datetime.fromisoformat(str(value).replace("Z", "+00:00"))
+    except ValueError:
+        return datetime.min.replace(tzinfo=UTC)
+    return moment if moment.tzinfo else moment.replace(tzinfo=UTC)
 
-    last_created_at: str | None
+
+@dataclass
+class _EventStoredData(EventExtraStoredData):
+    """Last event plus the newest notification handled, to catch up after a restart."""
+
+    last_created_at: str | None = None
 
     def as_dict(self) -> dict:
-        return {"last_created_at": self.last_created_at}
+        return asdict(self)
 
 
 class FastwebNotificationEvent(FastwebEntity, EventEntity):
@@ -57,11 +67,22 @@ class FastwebNotificationEvent(FastwebEntity, EventEntity):
         await super().async_added_to_hass()
         if extra := await self.async_get_last_extra_data():
             self._last_created_at = extra.as_dict().get("last_created_at")
-        self._fire(self._remember((self.coordinator.data or {}).get("notifications")))
+        missed = self._remember((self.coordinator.data or {}).get("notifications"))
+        # Automations attach their triggers late in startup; fire only after that.
+
+        @callback
+        def fire_missed(hass: HomeAssistant) -> None:
+            self._fire(missed)
+
+        if cancel := async_at_started(self.hass, fire_missed):
+            self.async_on_remove(cancel)
 
     @property
-    def extra_restore_state_data(self) -> _SeenNotifications:
-        return _SeenNotifications(self._last_created_at)
+    def extra_restore_state_data(self) -> _EventStoredData:
+        last = super().extra_restore_state_data
+        return _EventStoredData(
+            last.last_event_type, last.last_event_attributes, self._last_created_at
+        )
 
     def _remember(self, notifications: list[dict] | None) -> list[dict]:
         """Record notification ids and return the ones not seen before."""
@@ -69,18 +90,15 @@ class FastwebNotificationEvent(FastwebEntity, EventEntity):
             return []
         ids = {item["id"] for item in notifications}
         previous = self._last_created_at
-        self._last_created_at = max(
-            (item["created_at"] for item in notifications),
-            default=previous,
-            key=lambda value: value or "",
-        )
+        known = [previous, *(item["created_at"] for item in notifications)]
+        self._last_created_at = max(filter(None, known), key=_when, default=None)
         if self._seen is None:
             self._seen = ids
             if previous is None:
                 # Nothing stored: the first list is only a baseline, not events.
                 return []
             # After a restart, notifications newer than the last handled one are new.
-            return [item for item in notifications if item["created_at"] > previous]
+            return [item for item in notifications if _when(item["created_at"]) > _when(previous)]
         new = [item for item in notifications if item["id"] not in self._seen]
         self._seen |= ids
         return new
