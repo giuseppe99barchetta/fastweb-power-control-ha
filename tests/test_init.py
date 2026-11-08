@@ -176,8 +176,8 @@ async def test_optional_refresh_skipped_after_slow_realtime(
     mock_client: MagicMock,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    clock = iter([0.0, 25.0, 25.0, 25.0, 25.0, 25.0, 25.0, 25.0])
-    monkeypatch.setattr(coordinator_module, "monotonic", lambda: next(clock, 25.0))
+    clock = iter([0.0, 100.0, 100.0, 100.0, 100.0, 100.0, 100.0, 100.0])
+    monkeypatch.setattr(coordinator_module, "monotonic", lambda: next(clock, 100.0))
     await _setup(hass, config_entry)
     mock_client.get_settings.assert_not_called()
     mock_client.get_status.assert_not_called()
