@@ -56,15 +56,14 @@ threshold, and can send a notification.
 
 ## Install with HACS
 
-1. In HACS, open **Integrations → menu → Custom repositories**.
-2. Add
+1. In HACS, search for **Fastweb Power Control** and download it.
+   If it does not appear yet, open **⋮ → Custom repositories** and add
    `https://github.com/giuseppe99barchetta/fastweb-power-control-ha` as an
-   **Integration** repository.
-3. Find and install **Fastweb Power Control**.
-4. Restart Home Assistant.
-5. Open **Settings → Devices & services → Add integration** and select
+   **Integration** repository first.
+2. Restart Home Assistant.
+3. Open **Settings → Devices & services → Add integration** and select
    **Fastweb Power Control**.
-6. Enter your MyFastweb username, password, and update interval. If automatic
+4. Enter your MyFastweb username, password, and update interval. If automatic
    sign-in is blocked after a reCAPTCHA, also enter the optional **Session
    cookie** as described below.
 

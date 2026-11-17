@@ -6,7 +6,7 @@ from homeassistant.components.diagnostics import async_redact_data
 from homeassistant.const import CONF_PASSWORD, CONF_USERNAME
 from homeassistant.core import HomeAssistant
 
-from .api import AUTH_COOKIE_NAMES
+from .api import AUTH_COOKIE_NAMES, FastwebClient
 from .const import CONF_COOKIE
 from .coordinator import FastwebConfigEntry
 
@@ -15,12 +15,30 @@ TO_REDACT = {CONF_COOKIE, CONF_PASSWORD, CONF_USERNAME}
 TO_REDACT_DATA = {"title", "message", "holiday_from", "holiday_to"}
 
 
+def _session_summary(client: FastwebClient) -> dict:
+    """Snapshot the session under the client lock, which a running poll may hold."""
+    with client._lock:
+        return {
+            # Names and domains only: shows which host issued each session cookie.
+            "authenticated_cookies": sorted(
+                f"{cookie.name}@{cookie.domain}"
+                for cookie in client.jar
+                if cookie.name in AUTH_COOKIE_NAMES
+            ),
+            "persisted_cookie_names": sorted(
+                part.split("=", 1)[0] for part in client.cookie_header.split("; ") if part
+            ),
+            "security_token_available": client._token is not None,
+        }
+
+
 async def async_get_config_entry_diagnostics(
     hass: HomeAssistant, entry: FastwebConfigEntry
 ) -> dict:
     coordinator = entry.runtime_data
     samples = coordinator.latest_samples
     settings_age = coordinator.settings_age
+    session = await hass.async_add_executor_job(_session_summary, coordinator.client)
     return {
         "config_entry": async_redact_data(dict(entry.data), TO_REDACT),
         "options": dict(entry.options),
@@ -34,17 +52,6 @@ async def async_get_config_entry_diagnostics(
             "recent_samples_count": len(samples),
             "recent_samples_first": samples[0]["time"] if samples else None,
             "recent_samples_last": samples[-1]["time"] if samples else None,
-            # Names and domains only: shows which host issued each session cookie.
-            "authenticated_cookies": sorted(
-                f"{cookie.name}@{cookie.domain}"
-                for cookie in coordinator.client.jar
-                if cookie.name in AUTH_COOKIE_NAMES
-            ),
-            "persisted_cookie_names": sorted(
-                part.split("=", 1)[0]
-                for part in coordinator.client.cookie_header.split("; ")
-                if part
-            ),
-            "security_token_available": coordinator.client._token is not None,
+            **session,
         },
     }
